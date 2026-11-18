@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Radinfrastruktur Berlin im Zeitverlauf — OSM-Historie, klassifiziert wie radinfra.de</title>
+    <meta name="description" content="Wie sich die in OpenStreetMap erfasste Radinfrastruktur in Berlin seit 2020 entwickelt hat, klassifiziert wie radinfra.de." />
+    <link href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" rel="stylesheet" />
+    <link href="style.css" rel="stylesheet" />
+</head>
+<body>
+    <div id="map"></div>
+
+    <div id="loading" class="loading" role="status" aria-live="polite">
+        <span class="loading-spinner"></span>
+        <span>Kacheln laden …</span>
+    </div>
+
+    <div id="fatal" class="fatal" role="alert" hidden></div>
+
+    <div class="panel">
+        <div class="legend">
+            <div class="legend-header">
+                <div class="legend-header__text">
+                    <h3>Radinfrastruktur Berlin im Zeitverlauf</h3>
+                    <p class="panel-sub">
+                        OSM-Datenstand vom <span id="range-start">…</span> bis
+                        <span id="range-end">…</span>, klassifiziert wie bei radinfra.de.
+                    </p>
+                </div>
+                <button type="button" id="panel-toggle" class="panel-toggle"
+                        aria-expanded="true" aria-controls="panel-body"
+                        aria-label="Panel einklappen" title="Panel einklappen"></button>
+            </div>
+
+            <div id="panel-body" class="panel-body">
+                <div class="legend-columns" aria-hidden="true">
+                    <span>Führungsform</span>
+                    <span>km am <span id="legend-date">…</span></span>
+                </div>
+                <div id="legend-items" class="legend-list"></div>
+                <p class="legend-hint">Auf eine Kategorie klicken, um sie aus- und einzublenden.</p>
+
+                <p class="legend-note">
+                    Jede Straßenseite ist eine eigene, zur Seite versetzte Linie und zählt
+                    eigene Kilometer. Eigenständige Wege liegen mittig. Klick auf eine Linie
+                    zeigt, seit wann sie so in OSM steht.
+                </p>
+
+                <div class="legend-section">
+                    <label class="legend-item legend-item--master">
+                        <span class="toggle-switch toggle-switch-sm">
+                            <input type="checkbox" id="toggle-live" />
+                            <span class="toggle-slider"></span>
+                        </span>
+                        <span><strong>Vergleich:</strong> radinfra.de heute</span>
+                    </label>
+                    <p class="legend-note legend-note--tight">
+                        Legt die tagesaktuellen Daten von
+                        <a class="radinfra-deeplink" href="https://radinfra.de" target="_blank" rel="noopener">radinfra.de</a>
+                        darüber und springt auf den neuesten Stand. So lässt sich prüfen, ob die
+                        Nachberechnung mit dem Original übereinstimmt.
+                    </p>
+                </div>
+
+                <p class="legend-note legend-note--muted">
+                    <strong>Die Karte zeigt, was in OpenStreetMap eingetragen war, nicht was
+                    gebaut war.</strong> Kartieraktionen erscheinen als Sprünge. Alle Stände
+                    sind mit der heutigen Klassifikation bewertet; ältere Tagging-Schemata
+                    landen deshalb öfter in „Führungsform unklar“.
+                </p>
+
+                <p class="legend-note">
+                    Klassifikation nach <a href="https://radinfra.de" target="_blank" rel="noopener">radinfra.de</a>
+                    (<a href="https://github.com/FixMyBerlin/tilda-geo" target="_blank" rel="noopener">tilda-geo</a>
+                    von FixMyCity), nachgerechnet mit
+                    <a href="https://github.com/rush42/OSMnexus" target="_blank" rel="noopener">OSMnexus</a>.
+                    Diese Karte ist keine Veröffentlichung von radinfra.de.
+                    Daten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap-Mitwirkende</a> (ODbL).
+                </p>
+
+                <p class="legend-footer">
+                    Quellcode dieser Karte:
+                    <a href="https://github.com/vizsim-lab/radinfra-history" target="_blank" rel="noopener">
+                        <!-- GitHub mark, Octicons (MIT). -->
+                        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38
+                                0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01
+                                1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95
+                                0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18
+                                1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08
+                                2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0
+                                1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+                        </svg>
+                        <span>vizsim-lab/radinfra-history</span>
+                    </a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <div class="timeline-panel">
+        <div class="tl-head">
+            <div class="tl-buttons">
+                <button type="button" id="tl-prev" class="tl-btn" aria-label="Ein Stand zurück" title="Ein Stand zurück">
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3 5 8l5 5" /></svg>
+                </button>
+                <button type="button" id="tl-play" class="tl-btn tl-btn--play" aria-label="Abspielen" title="Abspielen">
+                    <svg class="icon-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7.5-4.5z" /></svg>
+                    <svg class="icon-pause" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9M11 3.5v9" /></svg>
+                </button>
+                <button type="button" id="tl-next" class="tl-btn" aria-label="Ein Stand vor" title="Ein Stand vor">
+                    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="m6 3 5 5-5 5" /></svg>
+                </button>
+            </div>
+            <div class="tl-readout">
+                <span class="tl-readout__label">OSM-Datenstand</span>
+                <strong id="tl-date">…</strong>
+            </div>
+            <div class="tl-readout tl-readout--right">
+                <span class="tl-readout__label">Radinfrastruktur gesamt</span>
+                <strong id="tl-total">…</strong>
+            </div>
+        </div>
+        <div id="timeline" class="timeline"></div>
+        <details class="tl-details">
+            <summary>Werte als Tabelle</summary>
+            <table id="tl-table">
+                <thead><tr><th>Stand</th><th>gesamt</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </details>
+    </div>
+
+    <script src="https://unpkg.com/maplibre-gl@5.24.0"></script>
+    <script src="https://unpkg.com/pmtiles@4.3.0/dist/pmtiles.js"></script>
+    <script type="module" src="script.js"></script>
+</body>
+</html>

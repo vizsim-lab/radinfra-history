@@ -1,0 +1,50 @@
+# Publishes site/ on GitHub Pages, together with the tiles and the timeline.
+#
+# The built data is not committed: it lives as assets of the release tagged
+# `data` (see README), so the repository does not grow by a tileset on every
+# rebuild. This workflow puts the assets next to the page before uploading it,
+# which keeps tiles and page on one origin — no CORS, and Pages answers the
+# Range requests PMTiles makes.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", ".github/workflows/pages.yml"]
+  release:
+    types: [published, edited]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch tiles and timeline from the data release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p site/tiles site/data
+          gh release download data --pattern '*.pmtiles' --dir site/tiles --clobber
+          gh release download data --pattern '*_timeline.json' --dir site/data --clobber
+          ls -l site/tiles site/data
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,19 @@
+# Pipeline working data: history files, snapshots, per-snapshot classifications.
+# History files carry personal metadata (user names, uids) and must never be committed.
+data/
+*.osh.pbf
+*.osm.pbf
+
+# Build output. Published as assets of the "data" release, not committed, so the
+# repository does not grow by a tileset on every rebuild (scripts/fetch_data.sh).
+site/tiles/*.pmtiles
+site/data/*_timeline.json
+
+# Pinned external tools (scripts/fetch_osmnexus.sh)
+.tools/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
