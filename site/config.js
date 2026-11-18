@@ -6,8 +6,21 @@ const REGION_SLUG = 'berlin';
 // relative URLs work locally (scripts/serve.py) and in production alike.
 const base = new URL('./', window.location.href);
 
-export const PMTILES_URL = `pmtiles://${new URL(`tiles/${REGION_SLUG}.pmtiles`, base).href}`;
 export const TIMELINE_URL = new URL(`data/${REGION_SLUG}_timeline.json`, base).href;
+
+// Files of one build of the data carry its id (the timeline's `build`) in their
+// URLs, so a browser never combines tiles and popup data from two builds.
+const versioned = (path, build) => {
+    const url = new URL(path, base);
+    if (build) url.searchParams.set('v', build);
+    return url.href;
+};
+// MapLibre Tiles in two archives (pipeline/tiles.py): details and overview.
+export const tilesURL = (build) => `pmtiles://${versioned(`tiles/${REGION_SLUG}.pmtiles`, build)}`;
+export const overviewTilesURL = (build) => `pmtiles://${versioned(`tiles/${REGION_SLUG}_lo.pmtiles`, build)}`;
+export const TILE_ENCODING = 'mlt';
+// The popup's dates, read per line on click (pipeline/versions.py, write_spans).
+export const spansURL = (build) => versioned(`data/${REGION_SLUG}_spans.bin`, build);
 
 // radinfra.de's own "details" style. Its layers are drawn as they are — colours,
 // widths, dashes, filters — against our source, plus a time filter. Keeping the
@@ -17,12 +30,13 @@ export const TIMELINE_URL = new URL(`data/${REGION_SLUG}_timeline.json`, base).h
 export const STYLE_URL = new URL('radinfra_details_style.json', base).href;
 
 export const SOURCE_ID = 'history';
+export const OVERVIEW_SOURCE_ID = 'history-lo';
 export const LAYER_PREFIX = 'rh-';
 export const HOVER_LAYER_ID = 'rh-hover';
 
-// The archive has two layers (pipeline/tiles.py): every version with its id and
-// name from z12, and below that a merged overview without ids. Lines can be
-// hovered and clicked from DETAIL_MINZOOM on.
+// Two layers (pipeline/tiles.py): every version with its id and name from z12,
+// and below that a merged overview without ids. Lines can be hovered and clicked
+// from DETAIL_MINZOOM on.
 export const SOURCE_LAYER = 'bikelanes';
 export const OVERVIEW_SOURCE_LAYER = 'bikelanes_lo';
 export const DETAIL_MINZOOM = 12;

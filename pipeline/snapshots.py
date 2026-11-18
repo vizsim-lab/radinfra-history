@@ -39,6 +39,34 @@ def regular_dates(start, end, step_months):
     return dates
 
 
+# The bounding box of the history file the snapshots were cut from (Geofabrik's
+# Berlin extract). A later extract must cover it, or the areas would lose km.
+HISTORY_BBOX = (13.08283, 52.33446, 13.762245, 52.6783)
+
+
+def extract_date(pbf):
+    """Date of a regular extract, from its replication timestamp (Geofabrik sets it)."""
+    for option in ("osmosis_replication_timestamp", "timestamp"):
+        result = tools.run([tools.osmium(), "fileinfo", "-g", f"header.option.{option}", pbf])
+        stamp = result.stdout.strip()
+        if stamp:
+            return datetime.fromisoformat(stamp.replace("Z", "+00:00")).date()
+    raise SystemExit(f"{pbf}: no timestamp in the header; pass --date")
+
+
+def check_coverage(pbf, bbox=HISTORY_BBOX, tolerance=0.01):
+    """The extract has to cover the area of the snapshots before it."""
+    result = tools.run([tools.osmium(), "fileinfo", "-g", "header.boxes", pbf])
+    found = [float(v) for v in re.findall(r"-?\d+(?:\.\d+)?", result.stdout)]
+    if len(found) < 4:
+        print(f"  {pbf}: no bounding box in the header, coverage not checked", flush=True)
+        return
+    west, south, east, north = found[:4]
+    if (west > bbox[0] + tolerance or south > bbox[1] + tolerance
+            or east < bbox[2] - tolerance or north < bbox[3] - tolerance):
+        raise SystemExit(f"{pbf}: covers {found[:4]}, less than the snapshots before it ({bbox})")
+
+
 def history_end(osh):
     """Timestamp of the newest object version in a history file."""
     result = tools.run([tools.osmium(), "fileinfo", "-e", "-g", "data.timestamp.last", osh])

@@ -6,7 +6,8 @@ date: they hardly change, and the question is what happened inside a fixed area.
 
 Every version is cut with every area it touches. A line that lies inside an area
 counts with its full length; one that crosses the boundary counts with the part
-inside. Lengths are per side of the road, as everywhere else.
+inside, as radinfra.de's Statistik does. Lengths count as everywhere else
+(versions.counted_m): per side of the road and per way.
 
 Writes, next to the timeline:
 
@@ -26,7 +27,7 @@ import shapely
 
 from . import tools
 from .style import legend_groups
-from .versions import geometry_lengths_m
+from .versions import counted_m, geometry_lengths_m
 
 LEVELS = {"4": "Land", "9": "Bezirk", "10": "Ortsteil"}
 # ~5 m at Berlin's latitude: invisible at the zooms the outline is seen at.
@@ -107,19 +108,24 @@ def select_berlin(boundaries):
     return areas
 
 
-def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_json, out_geojson):
+def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_json, out_geojson, keep=()):
+    """`keep`: slugs that must still be there (the quarterly update passes the
+    current ones, so an extract with a broken boundary cannot drop an area)."""
     timeline = json.loads(Path(timeline_json).read_text(encoding="utf-8"))
     n = len(timeline["snapshots"])
     groups = legend_groups()
     group_of = {c: i for i, g in enumerate(groups) for c in g["categories"]}
 
     areas = select_berlin(read_boundaries(snapshot_pbf))
+    missing = set(keep) - {a["slug"] for a in areas}
+    if missing:
+        raise SystemExit(f"{snapshot_pbf}: areas missing against the current data: {sorted(missing)}")
     polygons = np.array([a["geom"] for a in areas], dtype=object)
     shapely.prepare(polygons)
 
     con = duckdb.connect()
     cols = con.execute(
-        f"SELECT category, k0, k1, length_m, geometry::BLOB AS wkb FROM read_parquet('{versions_parquet}')"
+        f"SELECT category, k0, k1, dirs, length_m, geometry::BLOB AS wkb FROM read_parquet('{versions_parquet}')"
     ).fetchnumpy()
     lines = shapely.from_wkb(np.asarray([bytes(b) for b in cols["wkb"]], dtype=object))
     gi = np.array([group_of[c] for c in cols["category"]], dtype=np.int64)
@@ -135,6 +141,7 @@ def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_json, out_geo
     crossing = ~inside
     cut = shapely.intersection(lines[line_i[crossing]], polygons[area_i[crossing]])
     length[crossing] = geometry_lengths_m(cut)
+    length = counted_m(length, cols["dirs"][line_i])
 
     diff = np.zeros((len(areas), len(groups), n + 1))
     np.add.at(diff, (area_i, gi[line_i], k0[line_i]), length)

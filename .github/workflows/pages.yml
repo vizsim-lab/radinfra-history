@@ -34,7 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Fetch tiles and timeline from the data branch
+      - name: Fetch the built data from the data branch
         uses: actions/checkout@v5
         with:
           ref: data
@@ -46,6 +46,7 @@ jobs:
           cp _data/*.pmtiles site/tiles/
           cp _data/*_timeline.json site/data/
           cp _data/*_areas.json _data/*_areas.geojson site/data/ 2>/dev/null || echo "no area data yet"
+          cp _data/*_spans.bin site/data/ 2>/dev/null || echo "no popup file yet"
           ls -l site/tiles site/data
 
       - uses: actions/configure-pages@v5

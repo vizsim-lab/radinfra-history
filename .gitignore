@@ -10,6 +10,7 @@ site/tiles/*.pmtiles
 site/data/*_timeline.json
 site/data/*_areas.json
 site/data/*_areas.geojson
+site/data/*_spans.bin
 
 # Pinned external tools (scripts/fetch_osmnexus.sh)
 .tools/

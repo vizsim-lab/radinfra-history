@@ -8,14 +8,15 @@ import {
     HOVER_LAYER_ID,
     IMAGERY_URL,
     LAYER_PREFIX,
+    OVERVIEW_SOURCE_ID,
     OVERVIEW_SOURCE_LAYER,
     PLAY_INTERVAL_MS,
-    PMTILES_URL,
     SIDE_OFFSET_STOPS,
     SKIP_LAYER_IDS,
     SOURCE_ID,
     SOURCE_LAYER,
     STYLE_URL,
+    TILE_ENCODING,
     TIME_MAX_WAIT_MS,
     TIME_SETTLE_MS,
     TIMELINE_NOTES,
@@ -24,7 +25,10 @@ import {
     groupLabel,
     hoverStyle,
     initialMapConfig,
+    overviewTilesURL,
     radinfraURL,
+    spansURL,
+    tilesURL,
 } from './config.js';
 import { createAreas } from './areas.js';
 import { createImagery } from './imagery.js';
@@ -83,15 +87,17 @@ function keyToIso(key) {
     return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
 }
 
-async function fetchJSON(url) {
-    const response = await fetch(url);
+// `fresh`: ask the server every time (a cheap 304 if unchanged). For the files of
+// one build, whose `build` id the tile and popup URLs then carry.
+async function fetchJSON(url, { fresh = false } = {}) {
+    const response = await fetch(url, fresh ? { cache: 'no-cache' } : undefined);
     if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
     return response.json();
 }
 
 // Optional data: without it the page still works, the feature is just missing.
-function optionalJSON(url, what) {
-    return fetchJSON(url).catch((error) => {
+function optionalJSON(url, what, options) {
+    return fetchJSON(url, options).catch((error) => {
         console.warn(`${what} unavailable:`, error);
         return null;
     });
@@ -197,7 +203,7 @@ function historyLayerSpec(group, overview) {
     return {
         ...layer,
         id: historyLayerId(group, overview),
-        source: SOURCE_ID,
+        source: overview ? OVERVIEW_SOURCE_ID : SOURCE_ID,
         'source-layer': overview ? OVERVIEW_SOURCE_LAYER : SOURCE_LAYER,
         ...(overview ? { maxzoom: DETAIL_MINZOOM } : { minzoom: DETAIL_MINZOOM }),
         filter: ['all', layer.filter, AT_SELECTED_TIME],
@@ -230,18 +236,50 @@ function featureBounds(geometry) {
 
 const SIDE_LABELS = { l: 'linke Straßenseite', r: 'rechte Straßenseite', s: 'eigener Weg' };
 
+// The popup file has one record of six bytes per version id (vid, the tiles'
+// feature id): cf and ct as snapshot indices (uint16, 0xFFFF: still so), pc and nc
+// as indices into the timeline's `categories` (uint8, 0xFF: none). One range
+// request per clicked line; a server that ignores ranges sends the whole file.
+const SPAN_SIZE = 6;
+function createSpanReader(url, timeline) {
+    const keys = timeline.snapshots.map((s) => s.key);
+    const categories = timeline.categories ?? [];
+    const cache = new Map();
+    return async (vid) => {
+        if (!Number.isInteger(vid) || vid <= 0) throw new Error(`no version id: ${vid}`);
+        if (cache.has(vid)) return cache.get(vid);
+        const start = vid * SPAN_SIZE;
+        const response = await fetch(url, { headers: { Range: `bytes=${start}-${start + SPAN_SIZE - 1}` } });
+        if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
+        let buffer = await response.arrayBuffer();
+        if (response.status === 200) buffer = buffer.slice(start, start + SPAN_SIZE);
+        if (buffer.byteLength < SPAN_SIZE) throw new Error(`${url}: no record for ${vid}`);
+        const view = new DataView(buffer);
+        const cti = view.getUint16(2, true);
+        const pci = view.getUint8(4);
+        const nci = view.getUint8(5);
+        const span = {
+            cf: keys[view.getUint16(0, true)],
+            ct: cti === 0xffff ? OPEN_END : keys[cti],
+            pc: pci === 0xff ? null : categories[pci],
+            nc: nci === 0xff ? null : categories[nci],
+        };
+        if (span.cf === undefined || span.ct === undefined) throw new Error(`${url}: bad record for ${vid}`);
+        cache.set(vid, span);
+        return span;
+    };
+}
+
 // Built with DOM nodes and textContent: names and ids come from OSM data.
 //
 // The dates are those of the category, not of the version under the pointer: a
 // moved node or a new name makes a new version, but the infrastructure stays what
 // it was, so the popup says since when the line has had this category (cf) and
-// until when (ct), and what came before (pc) and after (nc).
-function popupContent(props, { groupOf, snapshots, radinfraHref }) {
+// until when (ct), and what came before (pc) and after (nc). They are not in the
+// tiles but in the popup file: `span` is undefined while it loads, null if it
+// could not be read.
+function popupContent(props, { groupOf, snapshots, radinfraHref, span }) {
     const keys = snapshots.map((s) => s.key);
-    const cf = Number(props.cf ?? props.f);
-    const ct = Number(props.ct ?? props.t);
-    const from = keys.indexOf(cf);
-    const until = ct === OPEN_END ? -1 : keys.indexOf(ct);
     const between = (i) => `zwischen ${formatShortDate(snapshots[i - 1].date)} und ${formatShortDate(snapshots[i].date)}`;
 
     const node = (tag, cls, text) => {
@@ -276,17 +314,26 @@ function popupContent(props, { groupOf, snapshots, radinfraHref }) {
         tr.append(node('td', null, label), td);
         table.append(tr);
     };
-    if (from <= 0) {
-        row('Seit', `spätestens ${formatDate(snapshots[0].date)}`, 'schon im ersten Stand dieser Karte');
+    if (span === undefined) {
+        row('Seit', '…');
+        row('Bis', '…');
+    } else if (span === null) {
+        row('Seit', '–', 'Verlauf gerade nicht abrufbar');
     } else {
-        row('Seit', formatDate(keyToIso(cf)), `eingetragen ${between(from)}`);
-        row('Vorher', props.pc ? labelOf(props.pc) : 'nicht unter dieser Way-ID erfasst');
-    }
-    if (ct === OPEN_END) {
-        row('Bis', `heute (Stand ${formatShortDate(snapshots[snapshots.length - 1].date)})`);
-    } else {
-        row('Bis', formatDate(keyToIso(ct)), until > 0 ? `geändert ${between(until)}` : null);
-        row('Danach', props.nc ? labelOf(props.nc) : 'nicht mehr unter dieser Way-ID erfasst');
+        const from = keys.indexOf(span.cf);
+        const until = span.ct === OPEN_END ? -1 : keys.indexOf(span.ct);
+        if (from <= 0) {
+            row('Seit', `spätestens ${formatDate(snapshots[0].date)}`, 'schon im ersten Stand dieser Karte');
+        } else {
+            row('Seit', formatDate(keyToIso(span.cf)), `eingetragen ${between(from)}`);
+            row('Vorher', span.pc ? labelOf(span.pc) : 'nicht unter dieser Way-ID erfasst');
+        }
+        if (span.ct === OPEN_END) {
+            row('Bis', `heute (Stand ${formatShortDate(snapshots[snapshots.length - 1].date)})`);
+        } else {
+            row('Bis', formatDate(keyToIso(span.ct)), until > 0 ? `geändert ${between(until)}` : null);
+            row('Danach', span.nc ? labelOf(span.nc) : 'nicht mehr unter dieser Way-ID erfasst');
+        }
     }
     card.append(table);
 
@@ -358,13 +405,14 @@ async function main() {
     maplibregl.addProtocol('pmtiles', protocol.tile);
 
     const [timeline, style, imageryList, areasData, areasGeojson] = await Promise.all([
-        fetchJSON(TIMELINE_URL),
+        fetchJSON(TIMELINE_URL, { fresh: true }),
         fetchJSON(STYLE_URL),
         optionalJSON(IMAGERY_URL, 'imagery list'),
-        optionalJSON(AREAS_URL, 'area statistics'),
-        optionalJSON(AREAS_GEOJSON_URL, 'area boundaries'),
+        optionalJSON(AREAS_URL, 'area statistics', { fresh: true }),
+        optionalJSON(AREAS_GEOJSON_URL, 'area boundaries', { fresh: true }),
     ]);
-    const { snapshots } = timeline;
+    const { snapshots, build } = timeline;
+    const readSpan = createSpanReader(spansURL(build), timeline);
     const groups = styleGroups(style);
     const groupOf = new Map(groups.flatMap((g) => {
         const value = g.layer.filter?.[2];
@@ -404,7 +452,8 @@ async function main() {
     map.on('load', () => {
         // Set before the layers exist, so their first render is already filtered.
         map.setGlobalStateProperty('t', snapshots[index].key);
-        map.addSource(SOURCE_ID, { type: 'vector', url: PMTILES_URL });
+        map.addSource(SOURCE_ID, { type: 'vector', url: tilesURL(build), encoding: TILE_ENCODING });
+        map.addSource(OVERVIEW_SOURCE_ID, { type: 'vector', url: overviewTilesURL(build), encoding: TILE_ENCODING });
 
         // The halo is switched with feature-state rather than a filter, so a hover
         // never touches the layer's filter. Invisible except on the hovered version.
@@ -601,6 +650,7 @@ async function main() {
         let target = null;
         let shown = null;
         let frame = null;
+        let popupToken = null;
         let hoverTimer = null;
         let pointer = null;
         const setHalo = (vid) => {
@@ -654,10 +704,25 @@ async function main() {
                 wayId,
                 bounds,
             }) : null;
+            // The popup opens at once with what the tile knows; the dates of the
+            // category come from the popup file and fill in when they arrive.
+            const props = { ...top.properties };
+            const context = { groupOf, snapshots, radinfraHref };
+            const token = Symbol('popup');
+            popupToken = token;
             popup
                 .setLngLat(event.lngLat)
-                .setDOMContent(popupContent(top.properties, { groupOf, snapshots, radinfraHref }))
+                .setDOMContent(popupContent(props, { ...context, span: undefined }))
                 .addTo(map);
+            readSpan(top.id).then(
+                (span) => ({ span }),
+                (error) => {
+                    console.warn('popup dates unavailable:', error);
+                    return { span: null };
+                },
+            ).then(({ span }) => {
+                if (popupToken === token && popup.isOpen()) popup.setDOMContent(popupContent(props, { ...context, span }));
+            });
         });
     });
 

@@ -76,7 +76,7 @@
                     <div class="legend-columns" aria-hidden="true">
                         <span class="legend-columns__date">am <span id="legend-date">…</span></span>
                         <span class="legend-columns__spark">Verlauf</span>
-                        <span class="legend-columns__km">km</span>
+                        <span class="legend-columns__km" data-tip="Kilometer je Straßenseite und Weg: Ein Radweg auf beiden Straßenseiten zählt doppelt, ein Weg für beide Richtungen einfach.">km <span class="info-icon">i</span></span>
                     </div>
                     <div id="legend-items" class="legend-items"></div>
                     <p class="legend-hint">
@@ -147,6 +147,12 @@
                         von FixMyCity), nachgerechnet mit
                         <a href="https://github.com/rush42/OSMnexus" target="_blank" rel="noopener">OSMnexus</a>.
                         Diese Karte ist keine Veröffentlichung von radinfra.de.
+                    </p>
+                    <p>
+                        Gezählt wird die Länge je Straßenseite und Weg. Die Statistik von radinfra.de
+                        zählt je Fahrtrichtung, also Wege für beide Richtungen doppelt, und kommt so auf
+                        mehr Kilometer. Für den Verlauf taugt das nicht: Früher fehlte fast überall die
+                        Richtungsangabe, und ohne sie nimmt radinfra.de bei Radwegen beide Richtungen an.
                     </p>
                     <p>
                         Der Rückgang 2021 bis 2024 (in der Zeitleiste markiert) ist vor allem eine

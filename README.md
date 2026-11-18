@@ -6,7 +6,8 @@ How the cycling infrastructure recorded in OpenStreetMap has changed over time,
 classified the way [radinfra.de](https://radinfra.de) classifies it today, on one
 map with a time slider.
 
-Pilot: **Berlin, quarterly from January 2016 to the newest state of the history file.**
+Pilot: **Berlin, quarterly from January 2016 to the end of the history file, and from
+then on every quarter from Geofabrik's public extract** (see [Updates](#updates)).
 
 The map draws radinfra.de's own "details" style — same categories, colours and
 dashes — against data computed here for every snapshot. Each side of a road is
@@ -29,12 +30,14 @@ data/classified/<date>.parquet          radinfra categories per way / side of a 
   │  pipeline/versions.py
   ▼
 data/berlin_versions.parquet            every distinct version once, with a lifespan
-  │  pipeline/areas.py (OSM boundaries)     │  manby (tippecanoe-compatible)
+  │  pipeline/areas.py (OSM boundaries)     │  manby (tippecanoe-compatible), MLT
   ▼                                         ▼
-site/data/berlin_areas.json             site/tiles/berlin.pmtiles
-  km per category, snapshot and area      one archive for all dates
-site/data/berlin_areas.geojson          site/data/berlin_timeline.json
-  Bezirke and Ortsteile                   km per category and snapshot (whole extract)
+site/data/berlin_areas.json             site/tiles/berlin_lo.pmtiles, berlin.pmtiles
+  km per category, snapshot and area      z9–11 and z12–14, for all dates
+site/data/berlin_areas.geojson          site/data/berlin_spans.bin
+  Bezirke and Ortsteile                   the popup's dates, 6 bytes per version
+                                        site/data/berlin_timeline.json
+                                          km per category and snapshot (whole extract)
 ```
 
 **Classification.** [OSMnexus](https://github.com/rush42/OSMnexus) reimplements the
@@ -64,8 +67,8 @@ Two deviations from tilda-geo are patched locally
 
 **Versions instead of one tileset per date.** Consecutive snapshots are compared per
 object (a way, or one side of a road: `way/123/cycleway/left`). A new version
-starts whenever category, geometry or name change, and ends when the object
-disappears. Each version is tiled once, with
+starts whenever category, geometry, name or directions of travel (see Lengths)
+change, and ends when the object disappears. Each version is tiled once, with
 
 - `f` — first snapshot it is part of (`YYYYMMDD`)
 - `t` — first snapshot it is no longer part of, or `99991231`
@@ -86,16 +89,25 @@ of its category, which the popup shows instead of `f` and `t`:
 - `pc`, `nc` — the category in the snapshot before and after that run, if the
   object was drawn there
 
+These four are not in the tiles. `site/data/berlin_spans.bin` holds them as six
+bytes per version at offset `vid × 6` (`cf`, `ct` as snapshot indices, `pc`, `nc`
+as indices into the timeline's `categories`), and a click reads its six bytes with
+one range request. Without them the detail tiles are about a seventh smaller.
+
 No feature is dropped at any zoom (`--no-feature-limit --no-tile-size-limit`).
 tippecanoe's usual `--drop-densest-as-needed` would thin out versions unevenly, and
 streets would flicker in and out while scrubbing.
 
-**Two layers.** A date change makes MapLibre re-filter every loaded tile, so
-overview tiles are kept light: below z12 the archive has a layer `bikelanes_lo` with
-only category, side and lifespan, and versions with equal values merged into one
-feature per tile (`--reorder --coalesce`). From z12, `bikelanes` has every version
-with id and name, which hover and popup need. The page draws each category from
-both and switches at z12.
+**Two archives, as MapLibre Tiles.** A date change makes MapLibre re-filter every
+loaded tile, so overview tiles are kept light: `berlin_lo.pmtiles` (z9–11) has a
+layer `bikelanes_lo` with only category, side and lifespan, and versions with equal
+values merged into one feature per tile (`--reorder --coalesce`).
+`berlin.pmtiles` (z12–14) has every version in `bikelanes`, with the id and name
+that hover and popup need. Both are [MLT](https://github.com/maplibre/maplibre-tile-spec)
+(`--tile-format=mlt`, read by MapLibre GL JS 5.12 and later with
+`encoding: 'mlt'`), about a quarter smaller than the same tiles as MVT. manby
+cannot join MLT archives, hence two files and two sources; the page draws each
+category from both and switches at z12.
 
 **On the page,** dragging the timeline or holding a key moves readout, legend and
 chart at once, but the map only takes the newest date: once the input rests for
@@ -103,9 +115,22 @@ chart at once, but the map only takes the newest date: once the input rests for
 date is still being drawn. Playing waits for each step to be drawn. The hover halo
 is a feature-state, not a filter. Timings in [site/config.js](site/config.js).
 
-**Lengths** are counted per side of the road: a street with cycle lanes on both
-sides counts twice. Categories the details style does not draw (`cyclewayLink`)
-are left out, as on radinfra.de's map.
+**Lengths** are counted per side of the road and per way: a street with cycle
+tracks on both sides counts twice, a two-way path of its own once. Categories the
+details style does not draw (`cyclewayLink`) are left out, as on radinfra.de's map.
+
+radinfra.de's Statistik counts per direction of travel instead
+(`tilda_measure_directions` in tilda-geo): a line that is not a oneway counts twice.
+Every version records that as `dirs`, and counted that way Berlin's newest
+snapshot has 3,588 km against 3,548 km on radinfra.de (November 2026). Over the
+years, though, that count follows the direction tags more than the cycleways. Old
+data mostly lacks them — in 2016, 43 of 4,919 Berlin roads with `…=track` had a
+`:oneway` — and without one radinfra.de takes a track to run both ways, so
+`cycleway:both=track` counted four times. Berlin would fall from 4,294 km (2016) to
+3,588 km, and "Getrennter Radweg" from 2,584 km to 642 km, mostly because
+directions were added and tracks redrawn as one-way ways of their own.
+`COUNT_DIRECTIONS` in [pipeline/versions.py](pipeline/versions.py) switches to that
+count; it changes the km only, not the versions or the tiles.
 
 **Aerial photos.** For Berlin the background can be switched to the Geoportal's
 orthophotos (2017–2026, via the codefor.de mirror). For each snapshot the newest
@@ -174,7 +199,7 @@ uv run python -m pipeline all --osh berlin-internal.osh.pbf --start 2016-01-01 -
 uv run python scripts/serve.py         # http://127.0.0.1:8765
 ```
 
-Each step also runs on its own (`snapshots`, `classify`, `versions`, `tiles`);
+Each step also runs on its own (`snapshots`, `classify`, `versions`, `areas`, `tiles`);
 classifications are reused unless `--force`. Instead of a history file, dated
 extracts work too, such as Geofabrik's yearly public `berlin-YYMMDD.osm.pbf`:
 
@@ -190,20 +215,47 @@ classify.
 
 ## Publishing
 
-The built tiles and timeline are not committed to `main`. They live on the `data`
-branch as a single commit that is replaced on every publish, so old tilesets do
-not pile up in the history:
+The built data — tiles, popup file, timeline, areas — is not committed to `main`.
+It lives on the `data` branch as a single commit that is replaced on every
+publish, so old tilesets do not pile up in the history. The branch also keeps
+`berlin_versions.parquet`, the state the [updates](#updates) continue from:
 
 ```bash
-./scripts/publish_data.sh       # force-pushes `data`, then starts the Pages workflow
+./scripts/publish_data.sh             # force-pushes `data`, then starts the Pages workflow
+NO_DEPLOY=1 ./scripts/publish_data.sh # only `data`: the next push to main deploys both
 ```
 
-[.github/workflows/pages.yml](.github/workflows/pages.yml) copies them next to the
-page and deploys `site/` to GitHub Pages, on one origin with the page. For Germany
-as a whole the archive will outgrow GitHub; then the tiles move to object storage
-(B2) with a CORS rule that allows `Range`, and only `PMTILES_URL` in
-[site/config.js](site/config.js) changes. `scripts/fetch_data.sh` puts the
-published data into `site/` for local work on the page.
+[.github/workflows/pages.yml](.github/workflows/pages.yml) copies the data next to
+the page and deploys `site/` to GitHub Pages, on one origin with the page. The
+files of one build carry its id in their URLs (`?v=`, the start of the versions
+file's MD5, written to the timeline as `build`), so a browser never combines tiles
+and popup dates of two builds; the JSON files are revalidated on every load. For
+Germany as a whole the archives will outgrow GitHub; then the tiles move to object
+storage (B2) with a CORS rule that allows `Range`, and only the URLs in
+[site/config.js](site/config.js) change. `scripts/fetch_data.sh` puts the
+published data into `site/` and `data/` for local work.
+
+## Updates
+
+[.github/workflows/update.yml](.github/workflows/update.yml) adds the newest state
+of OSM on the 2nd of January, April, July and October: Geofabrik's public
+`berlin-latest.osm.pbf`, which has no personal metadata, dated by its replication
+timestamp. It is classified like every snapshot before it and appended to the
+versions from the `data` branch; areas, tiles and popup file are rebuilt, and the
+result is published. The history file is not needed again.
+
+```bash
+uv run python -m pipeline update --pbf berlin-latest.osm.pbf   # the same, by hand
+```
+
+Appending gives what a build from all snapshots gives, apart from the numbering of
+new versions (tested, and checked on Berlin's 45 snapshots). An extract that is not
+newer than the last snapshot changes nothing; one that covers less than the
+snapshots before it, or lacks an area the page has, stops the update. The workflow
+runs every month, because GitHub turns off the schedules of a public repository
+after 60 days without activity; in the months between, it only renews the
+schedule. Started by hand, it builds without publishing unless `publish` is ticked,
+and keeps the result as an artifact either way.
 
 ## Credits
 

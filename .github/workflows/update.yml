@@ -1,0 +1,113 @@
+# Adds the newest state of OSM to the map, once a quarter.
+#
+# Geofabrik's public Berlin extract (no login, no personal metadata) is classified
+# like every snapshot before it and appended to the versions kept on the `data`
+# branch (pipeline/versions.py, append_snapshot); areas and tiles are rebuilt from
+# them, published on that branch, and Pages is redeployed. The history file is
+# not needed again: the versions are the state.
+#
+# Started by hand, it builds without publishing unless `publish` is ticked; the
+# result is kept as an artifact either way.
+#
+# It is scheduled every month, because GitHub turns off the schedules of a public
+# repository after 60 days without activity, less than a quarter. In the months
+# between, it only renews the schedule.
+name: Update
+
+on:
+  schedule:
+    # The 2nd of the month, when Geofabrik's extract of the 1st is out.
+    - cron: "41 4 2 * *"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the new snapshot (otherwise build only, kept as an artifact)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write  # push the data branch
+  actions: write   # start the Pages workflow
+
+concurrency:
+  group: update
+  cancel-in-progress: false
+
+jobs:
+  due:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.due.outputs.run }}
+    steps:
+      - name: Keep the schedule alive
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/update.yml/enable"
+
+      - name: Start of a quarter?
+        id: due
+        run: |
+          month=$(date -u +%-m)
+          if [ "${{ github.event_name }}" != schedule ] || [[ " 1 4 7 10 " == *" $month "* ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "month $month: no snapshot due"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  update:
+    needs: due
+    if: needs.due.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      EXTRACT_URL: https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq osmium-tool
+          uv sync --locked
+          scripts/fetch_osmnexus.sh
+
+      - name: Current data from the data branch
+        run: scripts/fetch_data.sh
+
+      - name: Newest extract
+        run: |
+          mkdir -p data/extracts
+          curl -fsSL --retry 3 -o data/extracts/berlin-latest.osm.pbf "$EXTRACT_URL"
+          curl -fsSL --retry 3 "$EXTRACT_URL.md5" \
+            | sed 's#  .*#  data/extracts/berlin-latest.osm.pbf#' | md5sum -c -
+          osmium fileinfo data/extracts/berlin-latest.osm.pbf
+
+      - name: Append it
+        id: update
+        run: uv run python -m pipeline update --pbf data/extracts/berlin-latest.osm.pbf --threads 4
+
+      - name: Keep the result
+        if: steps.update.outputs.changed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-${{ steps.update.outputs.date }}
+          path: |
+            site/tiles/*.pmtiles
+            site/data/*_timeline.json
+            site/data/*_areas.json
+            site/data/*_areas.geojson
+            site/data/*_spans.bin
+            data/*_versions.parquet
+          retention-days: 30
+
+      - name: Publish
+        if: steps.update.outputs.changed == 'true' && (github.event_name == 'schedule' || inputs.publish)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          scripts/publish_data.sh

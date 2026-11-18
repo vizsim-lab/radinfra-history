@@ -8,9 +8,15 @@ One GeoParquet per snapshot, reduced to what the map needs:
     category  VARCHAR   tilda category id (camelCase, as radinfra.de spells it)
     side      VARCHAR   l / r for a side of a road, s for a way of its own
     name      VARCHAR
+    dirs      TINYINT   directions of travel: 1 for a oneway, else 2
     geometry  GEOMETRY  LineString in WGS84, in OSM way direction
 
 Side-split objects keep the road centreline; the map offsets them to their side.
+
+`dirs` is what radinfra.de's Statistik counts a line with (tilda-geo,
+tilda_measure_directions): 1 for a oneway (`yes`, `implicit_yes` for a lane on one
+side of a road, `yes_dual_carriageway`), else 2. The km here use it only if
+versions.COUNT_DIRECTIONS is on.
 """
 
 import tempfile
@@ -20,6 +26,9 @@ import duckdb
 
 from . import tools
 from .style import CATEGORY_MAP
+
+# OSMnexus' `oneway` values that tilda-geo counts as one direction of travel.
+ONEWAY_VALUES = ("yes", "implicit_yes", "yes_dual_carriageway")
 
 
 def date_key(d):
@@ -72,6 +81,8 @@ def classify_snapshot(snapshot_date, pbf, out_path, threads=1):
                     CASE json_extract_string(r.annotations, '$._side')
                         WHEN 'left' THEN 'l' WHEN 'right' THEN 'r' ELSE 's' END AS side,
                     json_extract_string(r.produced, '$.name') AS name,
+                    CASE WHEN json_extract_string(r.produced, '$.oneway') IN {ONEWAY_VALUES}
+                         THEN 1 ELSE 2 END::TINYINT AS dirs,
                     r.geometry
                 FROM read_parquet('{raw}') r
                 JOIN category_map m ON m.osmnexus = r.category

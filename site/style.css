@@ -411,6 +411,13 @@ select {
 .legend-columns__km {
     width: 42px;
     text-align: center;
+    white-space: nowrap;
+    cursor: help;
+}
+
+.legend-columns__km .info-icon {
+    margin-left: 1px;
+    vertical-align: 0;
 }
 
 /* Category rows are switches: click hides the category, click again shows it.
