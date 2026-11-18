@@ -10,6 +10,7 @@ uids, changesets, versions or timestamps), so nothing personal leaves this step.
 """
 
 import re
+import tempfile
 from datetime import date, datetime
 from pathlib import Path
 
@@ -65,6 +66,25 @@ def check_coverage(pbf, bbox=HISTORY_BBOX, tolerance=0.01):
     if (west > bbox[0] + tolerance or south > bbox[1] + tolerance
             or east < bbox[2] - tolerance or north < bbox[3] - tolerance):
         raise SystemExit(f"{pbf}: covers {found[:4]}, less than the snapshots before it ({bbox})")
+
+
+def edited_since(pbf, way_ids, since):
+    """How many of these ways the extract says were edited on or after `since`
+    (their own timestamp: tags and node list, not moved nodes). None if the
+    extract carries no timestamps."""
+    if not way_ids:
+        return 0
+    with tempfile.TemporaryDirectory(prefix="edited-") as tmp:
+        ids = Path(tmp) / "ids.txt"
+        ids.write_text("".join(f"w{i}\n" for i in way_ids), encoding="utf-8")
+        ways = Path(tmp) / "ways.osm.pbf"
+        # Exit code 1: some ids not found (a way gone again); the others are written.
+        tools.run([tools.osmium(), "getid", "-i", ids, pbf, "-o", ways, "--overwrite"], ok=(0, 1))
+        opl = tools.run([tools.osmium(), "cat", ways, "-f", "opl"]).stdout
+    stamps = re.findall(r" t(\d{4}-\d\d-\d\d)T", opl)
+    if not stamps:
+        return None
+    return sum(date.fromisoformat(s) >= since for s in stamps)
 
 
 def history_end(osh):

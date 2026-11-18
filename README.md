@@ -251,7 +251,11 @@ uv run python -m pipeline update --pbf berlin-latest.osm.pbf   # the same, by ha
 Appending gives what a build from all snapshots gives, apart from the numbering of
 new versions (tested, and checked on Berlin's 45 snapshots). An extract that is not
 newer than the last snapshot changes nothing; one that covers less than the
-snapshots before it, or lacks an area the page has, stops the update. The workflow
+snapshots before it, or lacks an area the page has, stops the update. Its log says
+why versions end (gone, category, geometry, name, directions), how many changes lie
+in Berlin, and how many of the ways with a new category were edited in OSM since
+the last snapshot, by the extract's timestamps; a much smaller number there would
+mean the extract changed, not OSM. The workflow
 runs every month, because GitHub turns off the schedules of a public repository
 after 60 days without activity; in the months between, it only renews the
 schedule. Started by hand, it builds without publishing unless `publish` is ticked,

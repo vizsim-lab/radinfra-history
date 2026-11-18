@@ -45,12 +45,12 @@ def manby():
     return path
 
 
-def run(cmd, **kwargs):
-    """Run a command, echoing it, and fail with its output if it fails."""
+def run(cmd, ok=(0,), **kwargs):
+    """Run a command, echoing it, and fail with its output unless its exit code is in `ok`."""
     printable = " ".join(str(c) for c in cmd)
     print(f"$ {printable}", flush=True)
     result = subprocess.run([str(c) for c in cmd], capture_output=True, text=True, **kwargs)
-    if result.returncode != 0:
+    if result.returncode not in ok:
         sys.stderr.write(result.stdout[-4000:])
         sys.stderr.write(result.stderr[-4000:])
         raise SystemExit(f"command failed ({result.returncode}): {printable}")

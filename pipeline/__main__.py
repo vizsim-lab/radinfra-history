@@ -16,9 +16,11 @@ import time
 from datetime import date
 from pathlib import Path
 
+import duckdb
+
 from . import snapshots as snaps
 from .areas import build_areas
-from .classify import classify_all, classify_snapshot
+from .classify import classify_all, classify_snapshot, date_key
 from .tiles import build_tiles
 from .versions import append_snapshot, build_versions, write_spans
 
@@ -149,6 +151,16 @@ def _update(args, versions_path, timeline_path, spans_path, areas_json, areas_ge
     print("[versions]", flush=True)
     append_snapshot(versions_path, timeline_path, classified, snapshot_date)
     write_spans(versions_path, timeline_path, spans_path)
+    # A new or changed category needs an edit of the way's tags, so nearly all of
+    # those ways should have been edited since the last snapshot. Far fewer would
+    # mean that the extract differs, not OSM.
+    ways = [i for (i,) in duckdb.connect().execute(
+        f"SELECT DISTINCT osm_id FROM read_parquet('{versions_path}') WHERE cf = {date_key(snapshot_date)}"
+    ).fetchall()]
+    edited = snaps.edited_since(pbf, ways, last)
+    print(f"  {len(ways):,} ways got a new category or were added; "
+          + (f"{edited:,} of them edited in OSM since {last}" if edited is not None
+             else "the extract has no timestamps to check them"), flush=True)
     print("[areas]", flush=True)
     current = json.loads(areas_json.read_text(encoding="utf-8")) if areas_json.is_file() else {"areas": []}
     build_areas(pbf, versions_path, timeline_path, areas_json, areas_geojson,

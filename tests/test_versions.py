@@ -1,6 +1,8 @@
 """Versions and the timeline, on hand-made classified snapshots."""
 
 import json
+import shutil
+import subprocess
 from datetime import date
 
 import duckdb
@@ -269,3 +271,23 @@ def test_date_from_filename():
     assert snapshots.date_from_filename("berlin-210101.osm.pbf") == date(2021, 1, 1)
     with pytest.raises(ValueError):
         snapshots.date_from_filename("berlin-latest.osm.pbf")
+
+
+@pytest.mark.skipif(shutil.which("osmium") is None, reason="needs osmium-tool")
+def test_edited_since(tmp_path):
+    opl = tmp_path / "t.opl"
+    opl.write_text(
+        "n1 v1 dV c0 t2026-01-01T00:00:00Z i0 u T x13.4 y52.5\n"
+        "n2 v1 dV c0 t2026-01-01T00:00:00Z i0 u T x13.41 y52.5\n"
+        "w1 v2 dV c0 t2026-11-12T10:00:00Z i0 u Thighway=cycleway Nn1,n2\n"
+        "w2 v1 dV c0 t2026-10-01T08:00:00Z i0 u Thighway=cycleway Nn1,n2\n"
+    )
+    pbf = tmp_path / "t.osm.pbf"
+    subprocess.run(["osmium", "cat", opl, "-o", pbf], check=True)
+    since = date(2026, 11, 9)
+    assert snapshots.edited_since(pbf, [1, 2, 3], since) == 1  # way 3 is not in the file
+    assert snapshots.edited_since(pbf, [], since) == 0
+    # Snapshots cut from a history file carry no timestamps.
+    bare = tmp_path / "bare.osm.pbf"
+    subprocess.run(["osmium", "cat", pbf, "-o", bare, "-f", "pbf,add_metadata=false"], check=True)
+    assert snapshots.edited_since(bare, [1, 2], since) is None
