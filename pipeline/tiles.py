@@ -29,7 +29,8 @@ DETAIL_LAYER = "bikelanes"
 OVERVIEW_LAYER = "bikelanes_lo"
 
 # Attributes the map reads at detail zooms; everything else stays out of the tiles.
-DETAIL_ATTRIBUTES = ["id", "category", "side", "name", "f", "t"]
+# cf/ct/pc/nc are the span of the category and its neighbours, for the popup.
+DETAIL_ATTRIBUTES = ["id", "category", "side", "name", "f", "t", "cf", "ct", "pc", "nc"]
 # At overview zooms only what the filters and the style need.
 OVERVIEW_ATTRIBUTES = ["category", "side", "f", "t"]
 

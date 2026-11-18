@@ -11,6 +11,14 @@ so the state at snapshot date D is exactly the versions with f <= D < t. The map
 filters on that, which is why one tileset can serve every point in time and an
 unchanged cycleway costs one feature however many snapshots it spans.
 
+A moved node or a new name is a new version but not a new kind of infrastructure,
+so each version also carries the span of its category, for the popup:
+
+    cf  first snapshot of the unbroken run of this category on this object
+    ct  first snapshot after that run, or 99991231
+    pc  category in the snapshot before the run, if the object was drawn there
+    nc  category in the snapshot after the run, if the object is drawn there
+
 Alongside, km per legend row and snapshot go to a small JSON for the timeline.
 """
 
@@ -126,6 +134,34 @@ def build_versions(classified, out_parquet, timeline_json, region=None):
     if overlaps:
         raise SystemExit(f"{overlaps} overlapping versions — an object had two states at once")
 
+    # The same gaps and islands over (id, category) alone: how long the object kept
+    # its category, whatever happened to its geometry or name meanwhile.
+    con.execute(f"""
+        CREATE TEMP TABLE spans AS
+        WITH islands AS (
+            SELECT id, category, k, k - row_number() OVER (
+                PARTITION BY id, category ORDER BY k) AS island
+            FROM obs
+        ), runs AS (
+            SELECT id, category, min(k) AS c0, max(k) AS c1
+            FROM islands
+            GROUP BY id, category, island
+        )
+        SELECT v.vid, sf.date AS cf, coalesce(st.date, {OPEN_END}) AS ct,
+               prev.category AS pc, nxt.category AS nc
+        FROM versions v
+        JOIN runs r ON r.id = v.id AND r.category = v.category
+                   AND r.c0 <= v.k0 AND v.k1 <= r.c1
+        JOIN snaps sf ON sf.k = r.c0
+        LEFT JOIN snaps st ON st.k = r.c1 + 1
+        LEFT JOIN obs prev ON prev.id = v.id AND prev.k = r.c0 - 1
+        LEFT JOIN obs nxt ON nxt.id = v.id AND nxt.k = r.c1 + 1
+    """)
+    n_spans, n_distinct = con.execute("SELECT count(*), count(DISTINCT vid) FROM spans").fetchone()
+    n_all = con.execute("SELECT count(*) FROM versions").fetchone()[0]
+    if not n_spans == n_distinct == n_all:
+        raise SystemExit(f"category spans: {n_spans} rows, {n_distinct} versions, expected {n_all}")
+
     vid, category, k0, k1, wkb = con.execute(
         "SELECT vid, category, k0, k1, geometry::BLOB FROM versions ORDER BY vid"
     ).fetchnumpy().values()
@@ -137,8 +173,9 @@ def build_versions(classified, out_parquet, timeline_json, region=None):
     con.execute(f"""
         COPY (
             SELECT v.vid, v.id, v.osm_id, v.category, v.side, v.name, v.f, v.t,
+                   s.cf, s.ct, s.pc, s.nc,
                    v.k0, v.k1, l.length_m, v.geometry
-            FROM versions v JOIN lengths l USING (vid)
+            FROM versions v JOIN lengths l USING (vid) JOIN spans s USING (vid)
             ORDER BY v.vid
         ) TO '{out_parquet}' (FORMAT parquet, COMPRESSION zstd)
     """)

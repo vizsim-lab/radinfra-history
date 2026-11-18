@@ -84,6 +84,27 @@ def test_versions(history, tmp_path):
     ]
 
 
+def test_category_spans(history, tmp_path):
+    """cf/ct date the category, not the version: geometry changes do not count."""
+    out = tmp_path / "versions.parquet"
+    build_versions(history, out, tmp_path / "timeline.json")
+    k = [date_key(d) for d in DATES]
+    rows = duckdb.connect().execute(
+        f"SELECT id, f, cf, ct, pc, nc FROM read_parquet('{out}') ORDER BY id, f"
+    ).fetchall()
+    assert rows == [
+        ("way/1", k[0], k[0], OPEN_END, None, None),
+        ("way/2/cycleway/right", k[0], k[0], k[2], None, "cyclewayOnHighway_exclusive"),
+        ("way/2/cycleway/right", k[2], k[2], OPEN_END, "cyclewayOnHighway_advisory", None),
+        # gone and back: two runs, nothing drawn in between
+        ("way/3", k[0], k[0], k[1], None, None),
+        ("way/3", k[3], k[3], OPEN_END, None, None),
+        # the geometry change at k[1] starts a version but not a run
+        ("way/4", k[0], k[0], k[3], None, None),
+        ("way/4", k[1], k[0], k[3], None, None),
+    ]
+
+
 def test_state_at_each_date_matches_snapshot(history, tmp_path):
     """f <= D < t must reproduce every snapshot exactly (drawn categories only)."""
     out = tmp_path / "versions.parquet"
