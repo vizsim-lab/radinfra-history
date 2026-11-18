@@ -1,8 +1,13 @@
 import {
     BASEMAP_STYLE,
+    DEEP_HISTORY_URL,
+    DETAIL_MINZOOM,
+    HOVER_DELAY_MS,
     HOVER_LAYER_ID,
+    IMAGERY_URL,
     LAYER_PREFIX,
     LIVE,
+    OVERVIEW_SOURCE_LAYER,
     PLAY_INTERVAL_MS,
     PMTILES_URL,
     SIDE_OFFSET_STOPS,
@@ -10,12 +15,16 @@ import {
     SOURCE_ID,
     SOURCE_LAYER,
     STYLE_URL,
+    TIME_MAX_WAIT_MS,
+    TIME_SETTLE_MS,
     TIMELINE_URL,
+    URL_DEBOUNCE_MS,
     groupLabel,
     hoverStyle,
     initialMapConfig,
     radinfraURL,
 } from './config.js';
+import { createImagery } from './imagery.js';
 import {
     createTimeline,
     formatDate,
@@ -25,7 +34,6 @@ import {
 } from './timeline.js';
 
 const HIT_PADDING = 6;
-const HOVER_DELAY_MS = 60;
 const OPEN_END = 99991231;
 
 // Versions valid at the selected snapshot: f <= t_selected < t. The selected
@@ -62,6 +70,84 @@ async function fetchJSON(url) {
     return response.json();
 }
 
+function debounce(fn, ms) {
+    let timer = null;
+    return (...args) => {
+        if (timer !== null) window.clearTimeout(timer);
+        timer = window.setTimeout(() => {
+            timer = null;
+            fn(...args);
+        }, ms);
+    };
+}
+
+// Applying a date makes MapLibre re-filter every loaded tile of the history
+// source in its workers. Dragging the timeline would queue one of those per step,
+// each finishing after the pointer has long moved on. So only the newest date is
+// applied: after the input rests for TIME_SETTLE_MS, at least every
+// TIME_MAX_WAIT_MS while it keeps moving, and never while the previous date is
+// still being drawn.
+function createTimeApplier(map) {
+    let wanted = null;
+    let applied = null;
+    let busy = false;
+    let timer = null;
+    let burstStart = 0;
+    const waiters = [];
+
+    const isSettled = () => !busy && timer === null && wanted === applied;
+    const notify = () => {
+        if (isSettled()) waiters.splice(0).forEach((resolve) => resolve());
+    };
+
+    function schedule(delay) {
+        if (timer !== null) window.clearTimeout(timer);
+        timer = window.setTimeout(flush, delay);
+    }
+
+    function flush() {
+        timer = null;
+        // Retried once the date being drawn is done.
+        if (busy) return;
+        if (wanted === applied) {
+            notify();
+            return;
+        }
+        applied = wanted;
+        busy = true;
+        burstStart = 0;
+        map.setGlobalStateProperty('t', applied);
+        let done = false;
+        const finish = () => {
+            if (done) return;
+            done = true;
+            busy = false;
+            if (wanted !== applied) schedule(0);
+            else notify();
+        };
+        map.once('idle', finish);
+        // Never stay blocked if idle does not come, e.g. while the map is panned.
+        window.setTimeout(finish, 3000);
+    }
+
+    return {
+        request(key, { immediate = false } = {}) {
+            wanted = key;
+            const now = performance.now();
+            if (!burstStart) burstStart = now;
+            const delay = immediate ? 0
+                : Math.min(TIME_SETTLE_MS, Math.max(0, TIME_MAX_WAIT_MS - (now - burstStart)));
+            schedule(delay);
+        },
+        settled() {
+            return new Promise((resolve) => {
+                if (isSettled()) resolve();
+                else waiters.push(resolve);
+            });
+        },
+    };
+}
+
 // The styled layers of the radinfra details style, in drawing order.
 function styleGroups(style) {
     return (style.layers ?? [])
@@ -75,13 +161,18 @@ function styleGroups(style) {
         }));
 }
 
-function historyLayerSpec(group) {
+// Each category is drawn twice: from the merged overview layer below
+// DETAIL_MINZOOM, from the detail layer at and above it.
+const historyLayerId = (group, overview) => `${LAYER_PREFIX}${overview ? 'lo-' : ''}${group.id}`;
+
+function historyLayerSpec(group, overview) {
     const { layer } = group;
     return {
         ...layer,
-        id: LAYER_PREFIX + layer.id,
+        id: historyLayerId(group, overview),
         source: SOURCE_ID,
-        'source-layer': SOURCE_LAYER,
+        'source-layer': overview ? OVERVIEW_SOURCE_LAYER : SOURCE_LAYER,
+        ...(overview ? { maxzoom: DETAIL_MINZOOM } : { minzoom: DETAIL_MINZOOM }),
         filter: ['all', layer.filter, AT_SELECTED_TIME],
         layout: { ...(layer.layout ?? {}), visibility: 'visible' },
         // radinfra's own offset is a small constant; here each side of a road gets
@@ -128,9 +219,10 @@ function buildLegend(map, groups, timeline, liveState) {
     const apply = () => {
         for (const group of groups) {
             const on = visible.get(group.id);
-            const historyId = LAYER_PREFIX + group.id;
-            if (map.getLayer(historyId)) {
-                map.setLayoutProperty(historyId, 'visibility', on ? 'visible' : 'none');
+            for (const historyId of [historyLayerId(group, true), historyLayerId(group, false)]) {
+                if (map.getLayer(historyId)) {
+                    map.setLayoutProperty(historyId, 'visibility', on ? 'visible' : 'none');
+                }
             }
             const liveId = LIVE.layerPrefix + group.id;
             if (map.getLayer(liveId)) {
@@ -288,7 +380,7 @@ function popupContent(props, { groupOf, snapshots, liveHref }) {
     const wayId = osmWayId(props.id);
     if (wayId) {
         link(`https://www.openstreetmap.org/way/${wayId}`, `Way ${wayId} auf openstreetmap.org`);
-        link(`https://www.openstreetmap.org/way/${wayId}/history`, 'Versionsgeschichte des Ways');
+        link(DEEP_HISTORY_URL(wayId), 'Versionsgeschichte (OSM Deep History)');
     }
     if (liveHref) link(liveHref, 'Heutiger Stand bei radinfra.de');
     root.appendChild(links);
@@ -351,13 +443,52 @@ function writeIndexToURL(snapshots, index) {
     window.history.replaceState(window.history.state, '', url);
 }
 
+function bindBasemapSwitch(imagery, currentDate) {
+    const buttons = [...document.querySelectorAll('[data-basemap]')];
+    const note = document.getElementById('aerial-note');
+    if (!imagery) {
+        for (const b of buttons) if (b.dataset.basemap === 'aerial') b.disabled = true;
+        return () => {};
+    }
+    const describe = () => {
+        const v = imagery.current;
+        note.hidden = !imagery.on || !v;
+        if (!v) return;
+        note.replaceChildren();
+        const strong = document.createElement('strong');
+        strong.textContent = `Luftbild ${v.label}`;
+        note.append(strong, document.createTextNode(` (aufgenommen ${v.captured}), das jüngste vor dem gewählten Datenstand. `));
+        const credit = document.createElement('span');
+        credit.className = 'legend-note__credit';
+        credit.textContent = v.attribution;
+        note.append(credit);
+    };
+    for (const button of buttons) {
+        button.addEventListener('click', () => {
+            const aerial = button.dataset.basemap === 'aerial';
+            for (const b of buttons) b.setAttribute('aria-checked', String(b === button));
+            imagery.setOn(aerial, currentDate());
+            describe();
+        });
+    }
+    return describe;
+}
+
 async function main() {
     bindPanelToggle();
 
     const protocol = new pmtiles.Protocol();
     maplibregl.addProtocol('pmtiles', protocol.tile);
 
-    const [timeline, style] = await Promise.all([fetchJSON(TIMELINE_URL), fetchJSON(STYLE_URL)]);
+    const [timeline, style, imageryList] = await Promise.all([
+        fetchJSON(TIMELINE_URL),
+        fetchJSON(STYLE_URL),
+        // The photo background is optional: without its list the switch is disabled.
+        fetchJSON(IMAGERY_URL).catch((error) => {
+            console.warn('imagery list unavailable:', error);
+            return null;
+        }),
+    ]);
     const { snapshots } = timeline;
     const groups = styleGroups(style);
     const groupOf = new Map(groups.flatMap((g) => {
@@ -390,23 +521,31 @@ async function main() {
         map.setGlobalStateProperty('t', snapshots[index].key);
         map.addSource(SOURCE_ID, { type: 'vector', url: PMTILES_URL });
 
+        // The halo is switched with feature-state, not with a filter: a filter
+        // change would make MapLibre re-parse every tile of the source, on every
+        // hover. Invisible everywhere except on the hovered version.
         map.addLayer({
             id: HOVER_LAYER_ID,
             type: 'line',
             source: SOURCE_ID,
             'source-layer': SOURCE_LAYER,
-            filter: ['all', ['==', ['id'], -1], AT_SELECTED_TIME],
+            minzoom: DETAIL_MINZOOM,
+            filter: AT_SELECTED_TIME,
             layout: { 'line-cap': 'butt' },
             paint: {
                 'line-color': hoverStyle.color,
                 'line-width': hoverStyle.width,
-                'line-opacity': hoverStyle.opacity,
+                'line-opacity': ['case', ['boolean', ['feature-state', 'hover'], false], hoverStyle.opacity, 0],
                 'line-blur': 1,
                 'line-offset': sideOffset(),
             },
         });
-        for (const group of groups) map.addLayer(historyLayerSpec(group));
-        const historyIds = groups.map((g) => LAYER_PREFIX + g.id);
+        for (const group of groups) {
+            map.addLayer(historyLayerSpec(group, true));
+            map.addLayer(historyLayerSpec(group, false));
+        }
+        // Only the detail layers carry ids and names, so only they are hit-tested.
+        const historyIds = groups.map((g) => historyLayerId(g, false));
 
         // radinfra.de live, for comparing the newest snapshot with today. Off by
         // default and drawn on top.
@@ -418,6 +557,14 @@ async function main() {
             for (const group of groups) map.addLayer(liveLayerSpec(group, sourceLayer));
         }
 
+        const imagery = imageryList?.variants?.length ? createImagery(map, {
+            variants: imageryList.variants,
+            beforeId: HOVER_LAYER_ID,
+            isOwnLayer: (id) => id === HOVER_LAYER_ID || id.startsWith(LAYER_PREFIX)
+                || id.startsWith(LIVE.layerPrefix),
+        }) : null;
+        const describeImagery = bindBasemapSwitch(imagery, () => snapshots[index].date);
+
         const legend = buildLegend(map, groups, timeline, liveState);
         buildTable(timeline);
 
@@ -425,16 +572,25 @@ async function main() {
         const readoutTotal = document.getElementById('tl-total');
         const legendDate = document.getElementById('legend-date');
         const playButton = document.getElementById('tl-play');
-        let timer = null;
+        const applier = createTimeApplier(map);
+        const writeURL = debounce((i) => writeIndexToURL(snapshots, i), URL_DEBOUNCE_MS);
+        let playing = false;
+        let playTimer = null;
 
+        // Readout, legend and chart follow at once; the map gets the date through
+        // the applier, the photo with it.
         const show = (i) => {
             index = i;
-            map.setGlobalStateProperty('t', snapshots[i].key);
             readoutDate.textContent = formatDate(snapshots[i].date);
             readoutTotal.textContent = formatKm(timeline.total_km[i]);
             legendDate.textContent = formatShortDate(snapshots[i].date);
             legend.update(i);
-            writeIndexToURL(snapshots, i);
+            applier.request(snapshots[i].key, { immediate: playing });
+            if (imagery?.on) {
+                imagery.update(snapshots[i].date);
+                describeImagery();
+            }
+            writeURL(i);
         };
 
         const control = createTimeline(document.getElementById('timeline'), {
@@ -445,28 +601,44 @@ async function main() {
         });
 
         const stop = () => {
-            if (timer !== null) window.clearInterval(timer);
-            timer = null;
+            playing = false;
+            if (playTimer !== null) window.clearTimeout(playTimer);
+            playTimer = null;
             playButton.classList.remove('is-playing');
             playButton.setAttribute('aria-label', 'Abspielen');
             playButton.title = 'Abspielen';
         };
-        playButton.addEventListener('click', () => {
-            if (timer !== null) {
+        // One step, then wait until the map has drawn it before scheduling the
+        // next, so a slow device plays slower instead of piling up work.
+        const step = async () => {
+            if (!playing) return;
+            if (control.get() >= snapshots.length - 1) {
                 stop();
                 return;
             }
-            if (control.get() === snapshots.length - 1) control.set(0);
+            const started = performance.now();
+            control.set(control.get() + 1);
+            await applier.settled();
+            if (!playing) return;
+            playTimer = window.setTimeout(step, Math.max(0, PLAY_INTERVAL_MS - (performance.now() - started)));
+        };
+        playButton.addEventListener('click', () => {
+            if (playing) {
+                stop();
+                return;
+            }
+            playing = true;
             playButton.classList.add('is-playing');
             playButton.setAttribute('aria-label', 'Anhalten');
             playButton.title = 'Anhalten';
-            timer = window.setInterval(() => {
-                if (control.get() >= snapshots.length - 1) {
-                    stop();
-                    return;
-                }
-                control.set(control.get() + 1);
-            }, PLAY_INTERVAL_MS);
+            if (control.get() === snapshots.length - 1) {
+                control.set(0);
+                applier.settled().then(() => {
+                    if (playing) playTimer = window.setTimeout(step, PLAY_INTERVAL_MS);
+                });
+            } else {
+                step();
+            }
         });
         document.getElementById('tl-prev').addEventListener('click', () => {
             stop();
@@ -517,13 +689,14 @@ async function main() {
         let hoverTimer = null;
         let pointer = null;
         const setHalo = (vid) => {
-            map.setFilter(HOVER_LAYER_ID, ['all', ['==', ['id'], vid ?? -1], AT_SELECTED_TIME]);
+            const ref = (id) => ({ source: SOURCE_ID, sourceLayer: SOURCE_LAYER, id });
+            if (shown !== null) map.removeFeatureState(ref(shown), 'hover');
+            shown = vid;
+            if (vid !== null) map.setFeatureState(ref(vid), { hover: true });
         };
         const applyHover = () => {
             hoverTimer = null;
-            if (target === shown) return;
-            shown = target;
-            setHalo(shown);
+            if (target !== shown) setHalo(target);
         };
         map.on('mousemove', (event) => {
             pointer = event.point;
@@ -532,7 +705,7 @@ async function main() {
                 frame = null;
                 const top = query(pointer)[0] ?? null;
                 map.getCanvas().style.cursor = top ? 'pointer' : '';
-                const next = top ? top.id : null;
+                const next = top?.id ?? null;
                 if (next === target) return;
                 target = next;
                 if (hoverTimer !== null) window.clearTimeout(hoverTimer);
@@ -540,8 +713,9 @@ async function main() {
             });
         });
         map.on('mouseout', () => {
+            if (hoverTimer !== null) window.clearTimeout(hoverTimer);
+            hoverTimer = null;
             target = null;
-            shown = null;
             map.getCanvas().style.cursor = '';
             setHalo(null);
         });

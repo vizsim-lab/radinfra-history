@@ -1,0 +1,12 @@
+{
+  "name": "radinfra-history-imagery",
+  "private": true,
+  "type": "module",
+  "description": "Writes site/data/berlin_imagery.json from the OSM Editor Layer Index",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@osm-editor-kit/maplibre-editor-layer-index": "^1.0.3"
+  }
+}

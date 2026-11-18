@@ -17,9 +17,15 @@ export const TIMELINE_URL = new URL(`data/${REGION_SLUG}_timeline.json`, base).h
 export const STYLE_URL = new URL('radinfra_details_style.json', base).href;
 
 export const SOURCE_ID = 'history';
-export const SOURCE_LAYER = 'bikelanes';
 export const LAYER_PREFIX = 'rh-';
 export const HOVER_LAYER_ID = 'rh-hover';
+
+// The archive has two layers (pipeline/tiles.py): every version with its id and
+// name from z12, and below that a merged overview without ids. Lines can be
+// hovered and clicked from DETAIL_MINZOOM on.
+export const SOURCE_LAYER = 'bikelanes';
+export const OVERVIEW_SOURCE_LAYER = 'bikelanes_lo';
+export const DETAIL_MINZOOM = 12;
 
 // Invisible click target in the tilda style; hit testing here does not need it.
 export const SKIP_LAYER_IDS = ['hitarea-bikelanes-details'];
@@ -80,8 +86,30 @@ export const SIDE_OFFSET_STOPS = [
     [20, 8],
 ];
 
-// Time between two snapshots while playing.
+// Berlin's aerial photo series, from the OSM Editor Layer Index (scripts/imagery).
+export const IMAGERY_URL = new URL(`data/${REGION_SLUG}_imagery.json`, base).href;
+
+// Version history of a way, more readable than osm.org's own list.
+export const DEEP_HISTORY_URL = (wayId) => `https://osmlab.github.io/osm-deep-history/#/way/${wayId}`;
+
+// Time between two snapshots while playing. A step never starts before the
+// previous one is drawn, so on a slow device playing just gets slower.
 export const PLAY_INTERVAL_MS = 900;
+
+// Applying a date re-filters every loaded tile in the workers. While the timeline
+// is dragged or a key held down, the map takes the newest date once the input
+// rests for TIME_SETTLE_MS, and at least every TIME_MAX_WAIT_MS while it keeps
+// moving. The readout, legend and chart follow the pointer without delay.
+export const TIME_SETTLE_MS = 120;
+export const TIME_MAX_WAIT_MS = 450;
+
+// Before the hover halo follows the pointer. Long enough that sweeping across the
+// map does not light up every line on the way, short enough not to feel late.
+export const HOVER_DELAY_MS = 80;
+
+// The ?t= parameter is written after the date has rested this long; browsers
+// throttle history.replaceState when it is called on every drag step.
+export const URL_DEBOUNCE_MS = 400;
 
 export function radinfraURL({ zoom, lat, lng, wayId = null, bounds = null }) {
     const parts = [

@@ -9,7 +9,8 @@ Pilot: **Berlin, quarterly from January 2020 to the newest state of the history 
 The map draws radinfra.de's own "details" style — same categories, colours and
 dashes — against data computed here for every snapshot. Each side of a road is
 its own line, offset to its side. Clicking a line shows since when it has been
-in OSM in that form, with links to the way and its version history.
+in OSM in that form, with links to the way and its version history. For Berlin
+the background can show the aerial photo that matches the selected date.
 
 Not a publication of radinfra.de or FixMyCity.
 
@@ -42,6 +43,15 @@ geometry whether a path runs alongside a road. That only moves objects between
 `_adjoining`, `_isolated` and `_adjoiningOrIsolated`, which the details style draws
 in one colour, so the map is unaffected.
 
+One deviation from tilda-geo is patched locally
+([scripts/patch_osmnexus_config.py](scripts/patch_osmnexus_config.py), applied by
+`fetch_osmnexus.sh`): tilda-geo never splits a path-like way (path, footway,
+cycleway, track, steps, pedestrian) into left/right objects, while OSMnexus v0.1.0
+does as soon as it has a `cycleway:*` tag. A segregated path tagged
+`cycleway:surface=asphalt` then got a dashed "Führungsform unklar" line on each
+side — about 4,300 objects and 480 km in Berlin's newest snapshot, nearly the whole
+category.
+
 **Versions instead of one tileset per date.** Consecutive snapshots are compared per
 object (a way, or one side of a road: `way/123/cycleway/left`). A new version
 starts whenever category, geometry or name change, and ends when the object
@@ -61,9 +71,34 @@ No feature is dropped at any zoom (`--no-feature-limit --no-tile-size-limit`).
 tippecanoe's usual `--drop-densest-as-needed` would thin out versions unevenly, and
 streets would flicker in and out while scrubbing.
 
+**Two layers.** A date change makes MapLibre re-filter every loaded tile, so
+overview tiles are kept light: below z12 the archive has a layer `bikelanes_lo` with
+only category, side and lifespan, and versions with equal values merged into one
+feature per tile (`--reorder --coalesce`). From z12, `bikelanes` has every version
+with id and name, which hover and popup need. The page draws each category from
+both and switches at z12.
+
+**On the page,** dragging the timeline or holding a key moves readout, legend and
+chart at once, but the map only takes the newest date: once the input rests for
+120 ms, at least every 450 ms while it keeps moving, and never while the previous
+date is still being drawn. Playing waits for each step to be drawn. The hover halo
+is a feature-state, not a filter. Timings in [site/config.js](site/config.js).
+
 **Lengths** are counted per side of the road: a street with cycle lanes on both
 sides counts twice. Categories the details style does not draw (`cyclewayLink`)
 are left out, as on radinfra.de's map.
+
+**Aerial photos.** For Berlin the background can be switched to the Geoportal's
+orthophotos (2017–2026, via the codefor.de mirror). For each snapshot the newest
+photo taken on or before that date is shown, which is what mappers could have seen
+at the time; photos dated only by year count from 1 January. The capture list,
+[site/data/berlin_imagery.json](site/data/berlin_imagery.json), is generated from
+the [Editor Layer Index](https://github.com/osmlab/editor-layer-index) with
+[@osm-editor-kit/maplibre-editor-layer-index](https://github.com/osm-editor-kit/maplibre-editor-layer-index):
+
+```bash
+cd scripts/imagery && npm ci && npm run build
+```
 
 ## What the map shows and what it does not
 
@@ -135,4 +170,7 @@ published data into `site/` for local work on the page.
   by FixMyCity; style file `site/radinfra_details_style.json` taken from their tiles.
 - [OSMnexus](https://github.com/rush42/OSMnexus) (AGPL-3.0), used as a binary with its `configs/tilda`.
 - [manby](https://github.com/birkskyum/manby) for tiling, [osmium](https://osmcode.org/osmium-tool/) for snapshots.
+- Aerial photos: Geoportal Berlin (Datenlizenz Deutschland, OSM permission), tiles from
+  the codefor.de mirror, listed via the Editor Layer Index.
+- Version history links go to [OSM Deep History](https://osmlab.github.io/osm-deep-history/).
 - Page layout and interaction follow [vizsim/bikeneat](https://github.com/vizsim/bikeneat).

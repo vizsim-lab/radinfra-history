@@ -39,13 +39,25 @@
                     <span>km am <span id="legend-date">…</span></span>
                 </div>
                 <div id="legend-items" class="legend-list"></div>
-                <p class="legend-hint">Auf eine Kategorie klicken, um sie aus- und einzublenden.</p>
+                <p class="legend-hint">Auf eine Kategorie klicken, um sie aus- und einzublenden. Linien
+                    lassen sich ab Zoomstufe 12 anklicken.</p>
 
                 <p class="legend-note">
                     Jede Straßenseite ist eine eigene, zur Seite versetzte Linie und zählt
                     eigene Kilometer. Eigenständige Wege liegen mittig. Klick auf eine Linie
                     zeigt, seit wann sie so in OSM steht.
                 </p>
+
+                <div class="legend-section">
+                    <div class="legend-columns legend-columns--section" aria-hidden="true">
+                        <span>Hintergrund</span>
+                    </div>
+                    <div class="segmented" role="radiogroup" aria-label="Hintergrund">
+                        <button type="button" role="radio" aria-checked="true" data-basemap="map">Karte</button>
+                        <button type="button" role="radio" aria-checked="false" data-basemap="aerial">Luftbild Berlin</button>
+                    </div>
+                    <p id="aerial-note" class="legend-note legend-note--tight" aria-live="polite" hidden></p>
+                </div>
 
                 <div class="legend-section">
                     <label class="legend-item legend-item--master">

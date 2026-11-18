@@ -26,6 +26,8 @@ rm -rf "$DEST/config"
 mkdir -p "$DEST/config"
 cp "$tmp/src/configs/tilda/"*.json "$DEST/config/"
 cp -r "$tmp/src/configs/tilda/bikelanes" "$DEST/config/bikelanes"
+# Local fix until upstream has it: no left/right objects on paths, as in tilda-geo.
+python3 "$ROOT/scripts/patch_osmnexus_config.py" "$DEST/config"
 echo "$TAG" > "$DEST/VERSION"
 
 "$DEST/osmnexus" --help > /dev/null

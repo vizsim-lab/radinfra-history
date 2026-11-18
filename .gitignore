@@ -1,11 +1,11 @@
 # Pipeline working data: history files, snapshots, per-snapshot classifications.
 # History files carry personal metadata (user names, uids) and must never be committed.
-data/
+/data/
 *.osh.pbf
 *.osm.pbf
 
-# Build output. Published as assets of the "data" release, not committed, so the
-# repository does not grow by a tileset on every rebuild (scripts/fetch_data.sh).
+# Build output. Published on the `data` branch (scripts/publish_data.sh), not on
+# main, so the repository does not grow by a tileset on every rebuild.
 site/tiles/*.pmtiles
 site/data/*_timeline.json
 
