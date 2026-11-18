@@ -6,7 +6,7 @@
 // so an irregular last step (the history file's own end) sits where it belongs.
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const MARGIN = { top: 10, right: 14, bottom: 22, left: 46 };
+const MARGIN = { top: 10, right: 14, bottom: 22, left: 64 };
 const PLOT_HEIGHT = 64;
 
 export const dateFormat = new Intl.DateTimeFormat('de-DE', {
@@ -74,9 +74,16 @@ export function createTimeline(container, { snapshots, values, label, onChange }
     container.setAttribute('aria-valuemax', String(snapshots.length - 1));
 
     const x = (t) => MARGIN.left + ((t - t0) / Math.max(1, t1 - t0)) * (width - MARGIN.left - MARGIN.right);
-    const step = niceStep(Math.max(...values, 1), 2);
-    const yMax = Math.ceil(Math.max(...values, 1) / step) * step;
-    const y = (v) => MARGIN.top + PLOT_HEIGHT - (v / yMax) * PLOT_HEIGHT;
+    // The total moves by a few percent while the categories underneath shift a
+    // lot, so the y range is fitted to the data (clean ticks, labelled) rather than
+    // starting at zero — a flat line at the top of the box would say nothing. With
+    // no zero baseline there is deliberately no area fill, which would read as size.
+    const lo = Math.min(...values);
+    const hi = Math.max(...values);
+    const step = niceStep(Math.max(hi - lo, hi * 0.02, 1), 2);
+    const yMin = Math.max(0, Math.floor(lo / step) * step);
+    const yMax = Math.max(yMin + step, Math.ceil(hi / step) * step);
+    const y = (v) => MARGIN.top + PLOT_HEIGHT - ((v - yMin) / (yMax - yMin)) * PLOT_HEIGHT;
 
     function nearest(px) {
         let best = 0;
@@ -101,13 +108,12 @@ export function createTimeline(container, { snapshots, values, label, onChange }
 
         // Recessive grid: hairlines at clean values, labelled in muted ink.
         const grid = el('g', { class: 'tl-grid' }, svg);
-        for (let v = 0; v <= yMax + 1e-9; v += step) {
+        for (let v = yMin; v <= yMax + 1e-9; v += step) {
             el('line', { x1: MARGIN.left, x2: width - MARGIN.right, y1: y(v), y2: y(v) }, grid);
             const text = el('text', { x: MARGIN.left - 6, y: y(v), 'dominant-baseline': 'middle', 'text-anchor': 'end' }, grid);
-            text.textContent = v === 0 ? '0' : `${v.toLocaleString('de-DE')}`;
+            // The unit rides on the top tick instead of a separate label.
+            text.textContent = `${v.toLocaleString('de-DE')}${v + step > yMax + 1e-9 ? ' km' : ''}`;
         }
-        const unit = el('text', { x: MARGIN.left - 6, y: MARGIN.top - 2, 'text-anchor': 'end', class: 'tl-unit' }, grid);
-        unit.textContent = 'km';
 
         // Years along the bottom, at 1 January.
         const axis = el('g', { class: 'tl-axis' }, svg);
@@ -131,11 +137,6 @@ export function createTimeline(container, { snapshots, values, label, onChange }
 
         const points = times.map((t, i) => [x(t), y(values[i])]);
         const line = points.map(([px, py], i) => `${i ? 'L' : 'M'}${px.toFixed(1)},${py.toFixed(1)}`).join('');
-        const base = y(0).toFixed(1);
-        el('path', {
-            class: 'tl-area',
-            d: `${line}L${points[points.length - 1][0].toFixed(1)},${base}L${points[0][0].toFixed(1)},${base}Z`,
-        }, svg);
         el('path', { class: 'tl-line', d: line }, svg);
 
         // Crosshair for the hovered snapshot, under the current marker.

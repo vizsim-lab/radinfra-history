@@ -384,9 +384,9 @@ async function main() {
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 120 }));
 
     let index = initialIndex(snapshots);
-    map.setGlobalStateProperty('t', snapshots[index].key);
 
     map.on('load', () => {
+        // Set before the layers exist, so their first render is already filtered.
         map.setGlobalStateProperty('t', snapshots[index].key);
         map.addSource(SOURCE_ID, { type: 'vector', url: PMTILES_URL });
 
