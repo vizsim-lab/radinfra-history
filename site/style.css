@@ -605,6 +605,13 @@ select {
     color: var(--ui-accent);
 }
 
+.legend-prose code {
+    padding: 0 3px;
+    border-radius: 4px;
+    background: var(--ui-hover);
+    font-size: 10.5px;
+}
+
 /* ───── Background: map or aerial photo ───── */
 
 /* Mode chips as in unfallkarte's legend. */
@@ -869,6 +876,16 @@ select {
 .tl-stops line {
     stroke: #b6bcc6;
     stroke-width: 1;
+}
+
+/* A marked period: faint, under everything else. */
+.tl-note {
+    fill: #f3f4f6;
+}
+
+.tl-svg .tl-note-label {
+    font-size: 10px;
+    fill: var(--ui-text-muted);
 }
 
 .tl-line {

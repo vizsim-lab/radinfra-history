@@ -138,6 +138,15 @@ area.
   a few metres. That is a change in mapping, not new infrastructure.
 - Snapshot granularity: a change is dated to the snapshot it first appears in; the
   popup says between which two snapshots it happened.
+- The dip from 2021 to 2024 (about −400 km for the extract, marked in the
+  timeline) is mostly a change of mapping, not of the streets. Checked by object
+  and in a sample of the ways' tags: on 533 km of road sides the track tag went,
+  mostly `cycleway:*=track` → `separate`, and the new ways of their own cover
+  about 90 % of that, but at first often without full tags (around 170 km
+  "Führungsform unklar" in mid 2024); and 445 km of "Gehweg, Rad frei" went because
+  `bicycle=yes` was removed from footways (about 70 %) or set to `no`/`dismount`.
+  Double counting (a road tag and a way of its own for the same track) was rare:
+  at most about 50 km. So there is nothing to subtract; the band says what happened.
 - The popup dates the category, not the line: "since" is when this side of the way
   got its current category, whatever was edited on it later. A way that was split
   continues under new ids, so its history starts over there ("nicht unter dieser

@@ -92,6 +92,14 @@ export const AREAS_GEOJSON_URL = new URL(`data/${REGION_SLUG}_areas.geojson`, ba
 export const IMAGERY_URL = new URL(`data/${REGION_SLUG}_imagery.json`, base).href;
 
 // Version history of a way, more readable than osm.org's own list.
+// Periods in which the curve mostly shows a change of mapping, not of the streets;
+// drawn as a faint band in the timeline. 2021–2024: cycle tracks tagged on the
+// road became ways of their own (incompletely tagged at first), and bicycle=yes was
+// removed from many footways. The analysis is in the README.
+export const TIMELINE_NOTES = [
+    { from: '2021-01-01', to: '2024-07-01', label: 'Umstellung der Kartierung', short: 'Umstellung' },
+];
+
 export const DEEP_HISTORY_URL = (wayId) => `https://osmlab.github.io/osm-deep-history/#/way/${wayId}`;
 
 // Time between two snapshots while playing. A step never starts before the

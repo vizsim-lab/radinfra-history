@@ -18,6 +18,7 @@ import {
     STYLE_URL,
     TIME_MAX_WAIT_MS,
     TIME_SETTLE_MS,
+    TIMELINE_NOTES,
     TIMELINE_URL,
     URL_DEBOUNCE_MS,
     groupLabel,
@@ -485,6 +486,7 @@ async function main() {
             values: scope.total,
             label: 'Datenstand wählen',
             onChange: show,
+            notes: TIMELINE_NOTES,
         });
 
         const setScope = (next) => {

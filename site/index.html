@@ -88,10 +88,11 @@
                 </div>
             </section>
 
-            <section class="legend-section" data-section="changes">
+            <!-- Folded at start: unfolded, it lists the categories a second time. -->
+            <section class="legend-section collapsed" data-section="changes">
                 <div class="legend-section-title">
                     <span>Veränderung</span>
-                    <button type="button" class="toggle-arrow section-arrow open" aria-expanded="true"
+                    <button type="button" class="toggle-arrow section-arrow" aria-expanded="false"
                             aria-label="Veränderung auf-/zuklappen"></button>
                 </div>
                 <div class="legend-section-content">
@@ -146,6 +147,12 @@
                         von FixMyCity), nachgerechnet mit
                         <a href="https://github.com/rush42/OSMnexus" target="_blank" rel="noopener">OSMnexus</a>.
                         Diese Karte ist keine Veröffentlichung von radinfra.de.
+                    </p>
+                    <p>
+                        Der Rückgang 2021 bis 2024 (in der Zeitleiste markiert) ist vor allem eine
+                        Umstellung der Kartierung: Radwege, die an der Straße eingetragen waren, wurden zu
+                        eigenen Wegen, anfangs oft noch ohne vollständige Tags, und auf vielen Gehwegen
+                        wurde <code>bicycle=yes</code> entfernt oder korrigiert.
                     </p>
                     <p>
                         Daten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap-Mitwirkende</a> (ODbL).

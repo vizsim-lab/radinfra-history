@@ -6,7 +6,8 @@
 // so an irregular last step (the history file's own end) sits where it belongs.
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const MARGIN = { top: 10, right: 14, bottom: 22, left: 64 };
+// The top margin holds the names of marked periods, above the line's reach.
+const MARGIN = { top: 18, right: 14, bottom: 22, left: 64 };
 const PLOT_HEIGHT = 64;
 
 export const dateFormat = new Intl.DateTimeFormat('de-DE', {
@@ -55,7 +56,7 @@ function niceStep(max, ticks) {
     return 10 * power;
 }
 
-export function createTimeline(container, { snapshots, values: initialValues, label, onChange }) {
+export function createTimeline(container, { snapshots, values: initialValues, label, onChange, notes = [] }) {
     let values = initialValues;
     const times = snapshots.map((s) => parseDate(s.date).getTime());
     const t0 = times[0];
@@ -115,6 +116,20 @@ export function createTimeline(container, { snapshots, values: initialValues, la
         svg.setAttribute('width', width);
         svg.setAttribute('height', height);
         svg.replaceChildren();
+
+        // Periods in which the curve shows a change of mapping rather than of the
+        // streets: a faint band, named in the margin above, where it never meets the
+        // line. A short name where the long one would overrun the band.
+        for (const note of notes) {
+            const a = Math.max(t0, parseDate(note.from).getTime());
+            const b = Math.min(t1, parseDate(note.to).getTime());
+            if (b <= a) continue;
+            const xa = x(a);
+            const xb = x(b);
+            el('rect', { class: 'tl-note', x: xa, y: MARGIN.top, width: xb - xa, height: PLOT_HEIGHT }, svg);
+            const name = el('text', { class: 'tl-note-label', x: xa + 2, y: MARGIN.top - 5 }, svg);
+            name.textContent = xb - xa >= note.label.length * 5.6 ? note.label : (note.short ?? note.label);
+        }
 
         // Recessive grid: hairlines at clean values, labelled in muted ink.
         const grid = el('g', { class: 'tl-grid' }, svg);
