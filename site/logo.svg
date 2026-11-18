@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="radinfra-history">
+<title>radinfra-history</title>
+<style>
+@media (prefers-color-scheme: dark) {
+  .ink { stroke: #f3f4f6 }
+  .ink-fill { fill: #f3f4f6 }
+  .ink-stroke { stroke: #f3f4f6 }
+  .paper { fill: #111827 }
+  .spoke { stroke: #4b5563 }
+  .word { fill: #f3f4f6 }
+  .accent { fill: #7aa2ff }
+}
+</style>
+<path class="spoke" d="M128 111L128 53M136.5 113.28L165.5 63.05M142.72 119.5L192.95 90.5M145 128L203 128M142.72 136.5L192.95 165.5M136.5 142.72L165.5 192.95M128 145L128 203M119.5 142.72L90.5 192.95M113.28 136.5L63.05 165.5M111 128L53 128M113.28 119.5L63.05 90.5M119.5 113.28L90.5 63.05" fill="none" stroke="#cbd5e1" stroke-width="3" stroke-linecap="round"/>
+<path d="M44.62 166.88A92 92 0 0 0 120.62 219.7" fill="none" stroke="#f08ed5" stroke-width="20" stroke-dasharray="15.15 9.09" stroke-dashoffset="-4.55"/>
+<path d="M120.62 219.7A92 92 0 0 0 204.09 179.71" fill="none" stroke="#2dd4bf" stroke-width="20" stroke-dasharray="15.15 9.09" stroke-dashoffset="-4.55"/>
+<path d="M204.09 179.71A92 92 0 0 0 210.55 87.38" fill="none" stroke="#2dd4bf" stroke-width="20"/>
+<path d="M210.55 87.38A92 92 0 0 0 133.46 36.16" fill="none" stroke="#7a0ff5" stroke-width="20"/>
+<path d="M133.46 36.16A92 92 0 0 0 50.84 77.89" fill="none" stroke="#174ed9" stroke-width="20"/>
+<path d="M30.44 63.42L36.59 117.59L72.13 91.02Z" fill="#174ed9" stroke="#174ed9" stroke-width="3" stroke-linejoin="round"/>
+<path class="ink" d="M128 128L170 128" stroke="#1f2937" stroke-width="11" stroke-linecap="round"/>
+<path class="ink" d="M128 128L128 68" stroke="#1f2937" stroke-width="8" stroke-linecap="round"/>
+<circle class="ink-fill" cx="128" cy="128" r="12" fill="#1f2937"/>
+<circle class="paper" cx="128" cy="128" r="4.5" fill="#ffffff"/>
+<circle class="paper ink-stroke" cx="44.62" cy="166.88" r="8.5" fill="#ffffff" stroke="#1f2937" stroke-width="3.5"/>
+<circle class="paper ink-stroke" cx="120.62" cy="219.7" r="8.5" fill="#ffffff" stroke="#1f2937" stroke-width="3.5"/>
+<circle class="paper ink-stroke" cx="204.09" cy="179.71" r="8.5" fill="#ffffff" stroke="#1f2937" stroke-width="3.5"/>
+<circle class="paper ink-stroke" cx="210.55" cy="87.38" r="8.5" fill="#ffffff" stroke="#1f2937" stroke-width="3.5"/>
+<circle class="paper ink-stroke" cx="133.46" cy="36.16" r="8.5" fill="#ffffff" stroke="#1f2937" stroke-width="3.5"/>
+</svg>

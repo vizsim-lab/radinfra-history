@@ -127,6 +127,18 @@ body {
     gap: 10px;
 }
 
+.panel-logo {
+    flex: none;
+    width: 36px;
+    height: 36px;
+    margin: -2px -2px 0 -4px;
+}
+
+.legend-header__text {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
 .panel:not(.is-collapsed) .legend-header {
     padding-bottom: 11px;
     margin-bottom: 11px;
