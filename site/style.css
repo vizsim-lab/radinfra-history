@@ -1,6 +1,6 @@
-/* Look and feel follow vizsim/unfallkarte, so the vizsim maps read as a family:
-   the same tokens, the panel on the right with a sticky title and sections that
-   fold, map buttons as tiles at the bottom left, the same popups and tooltips. */
+/* The look follows vizsim/unfallkarte, so the vizsim maps read as a family: the
+   same colours, cards, headings, popups and tooltips. Layout and controls are this
+   map's own: panel on the left, timeline at the bottom. */
 
 :root {
     --ui-surface: #ffffff;
@@ -22,11 +22,13 @@
 
     --panel-width: 340px;
     --edge: 10px;
-    --tile: 44px;
     /* Measured by ui.js: the timeline's height, and the room the attribution
        takes from the bottom edge. The fallbacks are their usual sizes. */
     --timeline-h: 150px;
-    --corner-h: 64px;
+    --corner-h: 34px;
+    /* The timeline sits on the attribution, which needs one line or, open on a
+       narrow screen, several. */
+    --tl-bottom: max(34px, var(--corner-h));
 }
 
 * {
@@ -66,8 +68,8 @@ select {
 .loading {
     position: absolute;
     top: 12px;
-    /* Centred in the map area left of the panel. */
-    left: calc((100% - var(--panel-width) - 2 * var(--edge)) / 2);
+    /* Centred in the map area right of the panel. */
+    left: calc(50% + (var(--panel-width) + var(--edge)) / 2);
     transform: translateX(-50%);
     z-index: 4;
     display: none;
@@ -125,12 +127,12 @@ select {
 .legend {
     position: absolute;
     top: var(--edge);
-    right: var(--edge);
+    left: var(--edge);
     z-index: 3;
     width: var(--panel-width);
     max-width: calc(100% - 2 * var(--edge));
-    /* Ends above the attribution in the corner below. */
-    max-height: calc(100% - 2 * var(--edge) - var(--corner-h));
+    /* Ends above the scale bar, which MapLibre places bottom left. */
+    max-height: calc(100% - 2 * var(--edge) - 34px);
     /* No padding on top: the sticky title row carries it, or content would show
        through a gap above it while scrolling. */
     padding: 0 16px 12px;
@@ -306,20 +308,6 @@ select {
     display: none;
 }
 
-.row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.legend input[type="checkbox"] {
-    accent-color: var(--ui-accent);
-}
-
-.section-checkbox {
-    margin: 0;
-}
-
 /* ───── Controls ───── */
 
 .btn {
@@ -425,25 +413,28 @@ select {
     text-align: center;
 }
 
+/* Category rows are switches: click hides the category, click again shows it.
+   Buttons, so the browser defaults have to be undone. */
 .legend-item {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
+    width: 100%;
     margin: 0 0 1px;
     padding: 3px 4px;
+    border: 0;
     border-radius: 6px;
+    background: none;
+    font-size: 12px;
     line-height: 1.3;
+    text-align: left;
+    color: inherit;
     cursor: pointer;
     transition: background-color 0.12s;
 }
 
 .legend-item:hover {
     background: var(--ui-hover);
-}
-
-.legend-item input {
-    flex: none;
-    margin: 0;
 }
 
 .legend-color {
@@ -479,14 +470,13 @@ select {
     stroke-width: 1.5;
 }
 
-/* Hidden categories: the row stays readable, the marks step back. */
-.legend-item.is-off .legend-color,
-.legend-item.is-off .legend-spark-holder {
-    opacity: 0.3;
+/* Hidden categories step back, as before. */
+.legend-item[aria-checked="false"] {
+    opacity: 0.35;
 }
 
-.legend-item.is-off .legend-label {
-    color: var(--ui-text-muted);
+.legend-item[aria-checked="false"] .legend-color line {
+    stroke: var(--ui-text-muted);
 }
 
 .count-badge {
@@ -615,238 +605,104 @@ select {
     color: var(--ui-accent);
 }
 
-/* ───── Footer row: status and links ───── */
+/* ───── Background: map or aerial photo ───── */
 
-.legend-footer {
+/* Mode chips as in unfallkarte's legend. */
+.legend-modes {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding-top: 8px;
-    border-top: 1px solid var(--ui-divider);
+    flex-wrap: wrap;
+    gap: 6px;
 }
 
-.fc-stats {
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    line-height: 1.3;
+.legend-chip {
+    padding: 4px 10px;
+    border: 1px solid var(--ui-border);
+    border-radius: 999px;
+    background: var(--ui-hover);
+    font-size: 12px;
+    line-height: 1.2;
     color: var(--ui-text);
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
 }
 
-.fc-stat {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    white-space: nowrap;
+.legend-chip:hover {
+    border-color: #cfd4da;
+}
+
+.legend-chip[aria-checked="true"] {
+    border-color: var(--ui-accent);
+    background: var(--ui-accent-soft);
     font-weight: 700;
-    cursor: help;
-}
-
-.fc-stat svg {
-    flex: none;
-    opacity: 0.65;
-}
-
-.fc-links {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-left: auto;
-}
-
-.fc-links a {
-    display: inline-flex;
-    align-items: center;
-    color: #4b5563;
-    text-decoration: none;
-}
-
-.fc-links a:hover {
     color: var(--ui-text-strong);
 }
 
-.fc-badge {
-    margin-right: 4px;
-    padding: 2px 8px;
-    border: 1px solid #c7d2fe;
-    border-radius: 999px;
-    background: #eef2ff;
-    color: #3730a3;
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 1.45;
-    letter-spacing: 0.02em;
-    white-space: nowrap;
-    cursor: help;
-}
-
-/* ───── Bottom left: zoom tiles and the background panel ───── */
-
-.bottom-left-ui {
-    position: absolute;
-    left: var(--edge);
-    bottom: calc(var(--edge) + var(--tile) + 10px);
-    z-index: 2;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-#custom-nav-control .maplibregl-ctrl-group,
-#custom-nav-control .maplibregl-ctrl-group:not(:empty) {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: var(--tile);
-    margin: 0;
-    background: transparent;
-    border: none;
-    box-shadow: none;
-}
-
-#custom-nav-control .maplibregl-ctrl-group button {
-    width: var(--tile);
-    height: var(--tile);
-    border: 1px solid var(--ui-border);
-    border-radius: var(--ui-radius-sm);
-    background-color: var(--ui-surface);
-    box-shadow: var(--ui-shadow-sm);
-}
-
-#custom-nav-control .maplibregl-ctrl-group button:hover {
-    background-color: var(--ui-hover);
-}
-
-.map-settings-toggle {
-    position: absolute;
-    left: var(--edge);
-    bottom: var(--edge);
-    z-index: 6;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: var(--tile);
-    height: var(--tile);
-    padding: 0;
-    border: 1px solid var(--ui-border);
-    border-radius: var(--ui-radius-sm);
-    background: var(--ui-surface);
-    box-shadow: var(--ui-shadow-sm);
-    color: #4b5563;
-    cursor: pointer;
-}
-
-.map-settings-toggle:hover,
-.map-settings-toggle[aria-expanded="true"] {
-    background: var(--ui-hover);
-}
-
-.map-settings-panel {
-    position: absolute;
-    left: var(--edge);
-    bottom: calc(var(--edge) + var(--tile) + 10px);
-    z-index: 5;
-    width: 236px;
-    max-width: calc(100vw - 32px);
-    padding: 12px 14px 14px;
-    background: var(--ui-surface);
-    border: 1px solid var(--ui-border);
-    border-radius: var(--ui-radius);
-    box-shadow: var(--ui-shadow);
-    font-size: 12px;
-}
-
-.map-settings-panel.is-collapsed {
-    display: none;
-}
-
-.map-settings-title {
-    margin: 0 0 8px;
-    font-size: 10.5px;
-    font-weight: 700;
-    letter-spacing: 0.05em;
-    text-transform: uppercase;
-    color: var(--ui-text-sub);
-}
-
-.basemap-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-}
-
-.basemap-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    padding: 6px;
-    border: 1px solid transparent;
-    border-radius: 10px;
-    background: #f9fafb;
-    cursor: pointer;
-}
-
-.basemap-btn:hover {
-    background: var(--ui-hover);
-}
-
-.basemap-btn.selected {
-    border-color: var(--ui-accent);
-    background: #eef2ff;
-}
-
-.basemap-btn:disabled {
+.legend-chip:disabled {
     cursor: not-allowed;
     opacity: 0.45;
 }
 
-.basemap-preview {
-    width: 100%;
-    aspect-ratio: 1 / 1;
-    border-radius: 8px;
-    background-color: #e5e7eb;
-    background-position: center;
-    background-size: cover;
-}
-
-/* Thumbnails from vizsim/unfallkarte (there from vizsim/gradients2osm). */
-.basemap-preview-map {
-    background-color: #eef3f7;
-    background-image: url("thumbs/thumb-standard.webp");
-}
-
-.basemap-preview-aerial {
-    background-color: #516146;
-    background-image: url("thumbs/thumb-satellite.webp");
-}
-
-.basemap-label {
-    font-size: 11px;
-    color: #4b5563;
-}
-
-.basemap-btn.selected .basemap-label {
-    font-weight: 700;
+.legend-meta strong {
     color: var(--ui-text-strong);
 }
 
-.map-settings-note {
-    margin: 10px 0 0;
-    font-size: 11px;
-    line-height: 1.45;
+.legend-meta__credit {
+    display: block;
+    margin-top: 3px;
+    font-size: 10.5px;
+}
+
+/* ───── Footer ───── */
+
+.legend-footer {
+    margin: 0;
+    padding-top: 9px;
+    border-top: 1px solid var(--ui-divider);
+    font-size: 11.5px;
+    line-height: 1.5;
     color: var(--ui-text-muted);
 }
 
-.map-settings-note strong {
+.legend-footer a {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #4b5563;
+    text-decoration: none;
+}
+
+.legend-footer a span {
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.legend-footer a:hover {
     color: var(--ui-text-strong);
 }
 
-.map-settings-credit {
-    display: block;
-    margin-top: 4px;
-    font-size: 10.5px;
+.legend-footer svg {
+    flex: none;
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+
+/* ───── MapLibre's zoom buttons in the card look ───── */
+
+.maplibregl-ctrl-top-right .maplibregl-ctrl-group:not(:empty) {
+    overflow: hidden;
+    border: 1px solid var(--ui-border);
+    border-radius: var(--ui-radius-sm);
+    box-shadow: var(--ui-shadow-sm);
+}
+
+.maplibregl-ctrl-top-right .maplibregl-ctrl-group button {
+    width: 36px;
+    height: 36px;
+}
+
+.maplibregl-ctrl-top-right .maplibregl-ctrl-group button + button {
+    border-top-color: var(--ui-divider);
 }
 
 /* ───── Timeline ───── */
@@ -854,10 +710,10 @@ select {
 .timeline-panel {
     position: absolute;
     z-index: 2;
-    /* Right of the map tiles, left of the panel. */
-    left: calc(2 * var(--edge) + var(--tile));
-    right: calc(var(--panel-width) + 2 * var(--edge));
-    bottom: var(--edge);
+    /* Right of the panel, on the attribution. */
+    left: calc(var(--panel-width) + 2 * var(--edge));
+    right: var(--edge);
+    bottom: var(--tl-bottom);
     max-width: 920px;
     padding: 10px 14px 8px;
     background: var(--ui-surface);
@@ -1255,7 +1111,7 @@ select {
 .pick-bar {
     position: absolute;
     top: 12px;
-    left: calc((100% - var(--panel-width) - 2 * var(--edge)) / 2);
+    left: calc(50% + (var(--panel-width) + var(--edge)) / 2);
     z-index: 20;
     display: flex;
     align-items: center;
@@ -1305,13 +1161,7 @@ select {
     pointer-events: none;
 }
 
-/* ───── MapLibre corner: scale bar and attribution under the panel ───── */
-
-/* MapLibre sizes this box as content-box with 36px of padding for its ⓘ; the
-   whole box stays as wide as the panel above it. */
-.maplibregl-ctrl-bottom-right .maplibregl-ctrl-attrib.maplibregl-compact-show {
-    max-width: calc(var(--panel-width) - 36px);
-}
+/* ───── Scale bar ───── */
 
 .maplibregl-ctrl-scale {
     border-color: #6b7280;
@@ -1324,16 +1174,17 @@ select {
 
 @media (max-width: 1000px) {
     .timeline-panel {
-        right: var(--edge);
+        left: var(--edge);
         max-width: none;
     }
 
     .legend {
-        max-height: calc(100% - 2 * var(--edge) - max(var(--corner-h), var(--timeline-h) + var(--edge)));
+        max-height: calc(100% - 2 * var(--edge) - var(--timeline-h) - var(--tl-bottom));
     }
 
-    .maplibregl-ctrl-bottom-right {
-        bottom: calc(var(--timeline-h) + var(--edge));
+    .loading,
+    .pick-bar {
+        left: 50%;
     }
 }
 
@@ -1345,11 +1196,9 @@ select {
     }
 
     .legend {
-        left: var(--edge);
         right: var(--edge);
         width: auto;
         max-width: none;
-        max-height: calc(100% - 2 * var(--edge) - max(var(--corner-h), var(--timeline-h) + var(--edge)));
         padding: 0 14px 10px;
     }
 
@@ -1377,7 +1226,6 @@ select {
     }
 
     .timeline-panel {
-        left: var(--edge);
         padding: 8px 10px 6px;
     }
 
@@ -1394,29 +1242,20 @@ select {
         display: none;
     }
 
-    .bottom-left-ui {
-        bottom: calc(var(--timeline-h) + 3 * var(--edge) + var(--tile));
+    /* Out from under the panel: the zoom buttons sit above the timeline, and step
+       aside while the unfolded panel reaches down to it. */
+    .maplibregl-ctrl-top-right {
+        top: auto;
+        bottom: calc(var(--tl-bottom) + var(--timeline-h) + var(--edge));
     }
 
-    .map-settings-toggle {
-        bottom: calc(var(--timeline-h) + 2 * var(--edge));
-    }
-
-    .map-settings-panel {
-        bottom: calc(var(--timeline-h) + 3 * var(--edge) + var(--tile));
-    }
-
-    /* Unfolded, the panel covers the left side; the map buttons step aside. */
-    .legend:not(.collapsed) ~ .bottom-left-ui,
-    .legend:not(.collapsed) ~ .map-settings-toggle,
-    .legend:not(.collapsed) ~ .map-settings-panel {
+    body.panel-open .maplibregl-ctrl-top-right {
         display: none;
     }
 
     .loading {
         top: auto;
-        left: 50%;
-        bottom: calc(var(--timeline-h) + 3 * var(--edge));
+        bottom: calc(var(--tl-bottom) + var(--timeline-h) + 2 * var(--edge));
     }
 
     .pick-bar {

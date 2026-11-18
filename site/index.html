@@ -26,8 +26,7 @@
         <button type="button" id="pick-cancel" class="btn">Abbrechen</button>
     </div>
 
-    <!-- Panel, look and structure after vizsim/unfallkarte: sticky title, sections
-         that fold, a footer row with status and links. -->
+    <!-- Panel with the look of vizsim/unfallkarte: sticky title, sections that fold. -->
     <aside id="panel" class="legend" aria-label="Legende und Auswertung">
         <!-- On a phone the panel starts folded; set while parsing, before the first paint. -->
         <script>if (matchMedia('(max-width: 640px)').matches) document.currentScript.parentElement.classList.add('collapsed');</script>
@@ -69,10 +68,7 @@
 
             <section class="legend-section" data-section="categories">
                 <div class="legend-section-title">
-                    <label class="row">
-                        <input type="checkbox" id="legend-all" class="section-checkbox" checked />
-                        Führungsform
-                    </label>
+                    <span>Führungsform</span>
                     <button type="button" class="toggle-arrow section-arrow open" aria-expanded="true"
                             aria-label="Führungsformen auf-/zuklappen"></button>
                 </div>
@@ -84,7 +80,8 @@
                     </div>
                     <div id="legend-items" class="legend-items"></div>
                     <p class="legend-hint">
-                        Ab <a href="#" class="zoom-link" data-zoom="12">Zoomstufe 12</a> zeigt ein Klick
+                        Klick auf eine Zeile blendet die Führungsform aus und ein. Ab
+                        <a href="#" class="zoom-link" data-zoom="12">Zoomstufe 12</a> zeigt ein Klick
                         auf eine Linie, seit wann sie so in OSM steht.
                         <span class="info-icon" tabindex="0" data-tip="Jede Straßenseite ist eine eigene, zur Seite versetzte Linie und zählt eigene Kilometer. Eigenständige Wege liegen mittig.">i</span>
                     </p>
@@ -117,10 +114,27 @@
                 </div>
             </section>
 
-            <section class="legend-section collapsed" data-section="about">
+            <section class="legend-section" data-section="background">
+                <div class="legend-section-title">
+                    <span>Hintergrund</span>
+                    <button type="button" class="toggle-arrow section-arrow open" aria-expanded="true"
+                            aria-label="Hintergrund auf-/zuklappen"></button>
+                </div>
+                <div class="legend-section-content">
+                    <div class="legend-modes" role="radiogroup" aria-label="Hintergrund">
+                        <button type="button" class="legend-chip" role="radio" aria-checked="true" data-basemap="map">Karte</button>
+                        <button type="button" class="legend-chip" role="radio" aria-checked="false" data-basemap="aerial">Luftbild Berlin</button>
+                    </div>
+                    <p id="aerial-note" class="legend-meta" aria-live="polite">
+                        Das Luftbild folgt der Zeitleiste: zu jedem Stand das jüngste Bild davor.
+                    </p>
+                </div>
+            </section>
+
+            <section class="legend-section" data-section="about">
                 <div class="legend-section-title">
                     <span>Über die Karte</span>
-                    <button type="button" class="toggle-arrow section-arrow" aria-expanded="false"
+                    <button type="button" class="toggle-arrow section-arrow open" aria-expanded="true"
                             aria-label="Über die Karte auf-/zuklappen"></button>
                 </div>
                 <div class="legend-section-content legend-prose">
@@ -134,75 +148,21 @@
                         Diese Karte ist keine Veröffentlichung von radinfra.de.
                     </p>
                     <p>
-                        Das Luftbild (Geoportal Berlin) folgt der Zeitleiste: Zu jedem Stand erscheint das
-                        jüngste Bild davor, also das, was Mapper damals sehen konnten.
-                    </p>
-                    <p>
                         Daten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap-Mitwirkende</a> (ODbL).
                     </p>
                 </div>
             </section>
         </div>
 
-        <div class="legend-footer">
-            <div class="fc-stats">
-                <span class="fc-stat" id="fc-snapshots-chip" tabindex="0" data-tip="Vierteljährliche Stände aus der OSM-Historie">
-                    <!-- Octicons clock (MIT) -->
-                    <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm7-3.25v2.992l2.028.812a.75.75 0 0 1-.557 1.392l-2.5-1A.751.751 0 0 1 7 8.25v-3.5a.75.75 0 0 1 1.5 0Z" /></svg>
-                    <span id="fc-snapshots">…</span>
-                </span>
-                <span class="fc-stat" tabindex="0" data-tip="Zoomstufe · Linien lassen sich ab Zoomstufe 12 anklicken">
-                    <!-- Octicons search (MIT) -->
-                    <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z" /></svg>
-                    <span id="fc-zoom">…</span>
-                </span>
-            </div>
-            <div class="fc-links">
-                <span class="fc-badge" tabindex="0" data-tip="Beta: Daten und Funktionen können sich noch ändern">Beta</span>
-                <a href="https://github.com/vizsim-lab/radinfra-history" target="_blank" rel="noopener"
-                   title="Quellcode auf GitHub (vizsim-lab/radinfra-history)" aria-label="Quellcode auf GitHub">
-                    <!-- Octicons mark-github (MIT) -->
-                    <svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z" /></svg>
-                </a>
-                <a href="https://github.com/vizsim-lab/radinfra-history/issues" target="_blank" rel="noopener"
-                   title="Fehler melden / Feedback (GitHub Issues)" aria-label="GitHub Issues">
-                    <!-- Octicons issue-opened (MIT) -->
-                    <svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" /><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z" /></svg>
-                </a>
-            </div>
-        </div>
-    </aside>
-
-    <!-- Bottom left, as in vizsim/unfallkarte: zoom buttons as tiles, and below them the
-         button for the background panel. -->
-    <div id="bottom-left-ui" class="bottom-left-ui">
-        <div id="custom-nav-control"></div>
-    </div>
-
-    <button type="button" id="map-settings-toggle" class="map-settings-toggle"
-            aria-expanded="false" aria-controls="map-settings-panel" title="Hintergrund wählen">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-            <polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21 1 6"></polygon>
-            <line x1="8" y1="3" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="21"></line>
-        </svg>
-    </button>
-
-    <section id="map-settings-panel" class="map-settings-panel is-collapsed" aria-label="Hintergrund">
-        <div class="map-settings-title">Hintergrund</div>
-        <div class="basemap-grid" role="radiogroup" aria-label="Hintergrund">
-            <button type="button" class="basemap-btn selected" role="radio" aria-checked="true" data-basemap="map">
-                <span class="basemap-preview basemap-preview-map"></span>
-                <span class="basemap-label">Karte</span>
-            </button>
-            <button type="button" class="basemap-btn" role="radio" aria-checked="false" data-basemap="aerial">
-                <span class="basemap-preview basemap-preview-aerial"></span>
-                <span class="basemap-label">Luftbild Berlin</span>
-            </button>
-        </div>
-        <p id="aerial-note" class="map-settings-note" aria-live="polite">
-            Das Luftbild folgt der Zeitleiste: zu jedem Stand das jüngste Bild davor.
+        <p class="legend-footer">
+            Quellcode dieser Karte:
+            <a href="https://github.com/vizsim-lab/radinfra-history" target="_blank" rel="noopener">
+                <!-- Octicons mark-github (MIT) -->
+                <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z" /></svg>
+                <span>vizsim-lab/radinfra-history</span>
+            </a>
         </p>
-    </section>
+    </aside>
 
     <div id="timeline-panel" class="timeline-panel">
         <div class="tl-head">

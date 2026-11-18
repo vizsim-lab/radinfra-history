@@ -158,8 +158,8 @@ export function createAreas(map, { data, geojson, beforeId = undefined, onSelect
     };
 }
 
-// Keep the area clear of the panel, the map buttons and the timeline when zooming
-// to it. The panel is a column on the right, or on a phone a band across the top.
+// Keep the area clear of the panel and the timeline when zooming to it. The panel
+// is a column on the left, or on a phone a band across the top.
 function fitPadding(map) {
     const box = map.getContainer().getBoundingClientRect();
     const rect = (id) => {
@@ -167,12 +167,10 @@ function fitPadding(map) {
         return r && r.width > 0 && r.height > 0 ? r : null;
     };
     const panel = rect('panel');
-    const buttons = rect('bottom-left-ui');
     const timeline = rect('timeline-panel');
     const pad = { top: 24, right: 24, bottom: 24, left: 24 };
-    if (panel && panel.width < box.width * 0.6) pad.right = Math.max(pad.right, box.right - panel.left + 16);
+    if (panel && panel.width < box.width * 0.6) pad.left = Math.max(pad.left, panel.right - box.left + 16);
     else if (panel) pad.top = Math.max(pad.top, panel.bottom - box.top + 16);
-    if (buttons) pad.left = Math.max(pad.left, buttons.right - box.left + 16);
     if (timeline) pad.bottom = Math.max(pad.bottom, box.bottom - timeline.top + 16);
     // MapLibre cannot fit into less than nothing; leave it at least a strip.
     const shrink = (a, b, size) => {

@@ -20,35 +20,22 @@ export function swatch(color, dash) {
     return svg;
 }
 
-// One row per category, top to bottom as radinfra.de lists them, each with a
-// checkbox; the section's checkbox switches all of them and shows a mix as
-// indeterminate. `onToggle(groupId, visible)` does the hiding on the map.
+// One row per category, top to bottom as radinfra.de lists them. Clicking a row
+// hides the category; `onToggle(groupId, visible)` does the hiding on the map.
 export function buildLegend(groups, snapshots, onToggle) {
     const list = document.getElementById('legend-items');
-    const all = document.getElementById('legend-all');
     const zeros = snapshots.map(() => 0);
     const rows = [];
     let current = snapshots.length - 1;
 
-    const syncAll = () => {
-        const on = rows.filter((r) => r.input.checked).length;
-        all.checked = on === rows.length;
-        all.indeterminate = on > 0 && on < rows.length;
-    };
-    const setRow = (r, visible) => {
-        r.input.checked = visible;
-        r.row.classList.toggle('is-off', !visible);
-        onToggle(r.group.id, visible);
-    };
-
     // A style lists layers bottom to top; the legend reads top to bottom, so the
     // order is reversed for display only.
     for (const group of [...groups].reverse()) {
-        const row = document.createElement('label');
+        const row = document.createElement('button');
+        row.type = 'button';
         row.className = 'legend-item';
-        const input = document.createElement('input');
-        input.type = 'checkbox';
-        input.checked = true;
+        row.setAttribute('role', 'switch');
+        row.setAttribute('aria-checked', 'true');
 
         const text = document.createElement('span');
         text.className = 'legend-label';
@@ -59,20 +46,15 @@ export function buildLegend(groups, snapshots, onToggle) {
         const value = document.createElement('span');
         value.className = 'count-badge';
 
-        row.append(input, swatch(group.color, group.dash), text, sparkHolder, value);
-        list.appendChild(row);
-        const r = { row, input, group, value, sparkHolder, spark: null, km: zeros };
-        input.addEventListener('change', () => {
-            setRow(r, input.checked);
-            syncAll();
+        row.append(swatch(group.color, group.dash), text, sparkHolder, value);
+        row.addEventListener('click', () => {
+            const next = row.getAttribute('aria-checked') !== 'true';
+            row.setAttribute('aria-checked', String(next));
+            onToggle(group.id, next);
         });
-        rows.push(r);
+        list.appendChild(row);
+        rows.push({ row, group, value, sparkHolder, spark: null, km: zeros });
     }
-
-    all.addEventListener('change', () => {
-        all.indeterminate = false;
-        for (const r of rows) if (r.input.checked !== all.checked) setRow(r, all.checked);
-    });
 
     const legend = {
         // km per snapshot for every row, for the area now selected.
@@ -218,10 +200,10 @@ export function describeArea(area, areas) {
     }
 }
 
-// Map or aerial photo, from the thumbnails in the background panel. While the
-// photo is on, a chip in the timeline names the year it shows.
+// Map or aerial photo. While the photo is on, a chip in the timeline names the
+// year it shows, so it stays in view with the panel folded.
 export function bindBasemapSwitch(imagery, currentDate, variants = []) {
-    const buttons = [...document.querySelectorAll('.basemap-btn[data-basemap]')];
+    const buttons = [...document.querySelectorAll('[data-basemap]')];
     const note = document.getElementById('aerial-note');
     const chip = document.getElementById('tl-aerial');
     if (!imagery) {
@@ -252,7 +234,7 @@ export function bindBasemapSwitch(imagery, currentDate, variants = []) {
         const strong = document.createElement('strong');
         strong.textContent = `Luftbild ${v.label}`;
         const credit = document.createElement('span');
-        credit.className = 'map-settings-credit';
+        credit.className = 'legend-meta__credit';
         credit.textContent = v.attribution;
         note.replaceChildren(strong, document.createTextNode(` (aufgenommen ${v.captured}), ${relation}.`), credit);
         chip.textContent = `Luftbild ${v.label}`;
@@ -262,10 +244,7 @@ export function bindBasemapSwitch(imagery, currentDate, variants = []) {
     for (const button of buttons) {
         button.addEventListener('click', () => {
             const aerial = button.dataset.basemap === 'aerial';
-            for (const b of buttons) {
-                b.classList.toggle('selected', b === button);
-                b.setAttribute('aria-checked', String(b === button));
-            }
+            for (const b of buttons) b.setAttribute('aria-checked', String(b === button));
             imagery.setOn(aerial, currentDate());
             describe();
         });

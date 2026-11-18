@@ -41,13 +41,10 @@ import {
 import { createTimeline, formatDate, formatKm, formatShortDate } from './timeline.js';
 import {
     MOBILE_QUERY,
-    addNavigation,
-    bindFooter,
     bindZoomLinks,
     foldAttributionOnPhone,
     isPanelCollapsed,
     setPanelCollapsed,
-    setupMapSettings,
     setupPanel,
     setupTooltips,
     trackCornerHeight,
@@ -352,7 +349,6 @@ function areaScope(area, groups, snapshots) {
 async function main() {
     setupTooltips();
     setupPanel();
-    setupMapSettings();
     trackTimelineHeight();
 
     // With metadata, the protocol hands MapLibre the archive's full TileJSON,
@@ -390,16 +386,15 @@ async function main() {
     });
     window.historyMap = map;
     bindLoadingIndicator(map);
-    addNavigation(map);
     bindZoomLinks(map);
-    bindFooter(map, snapshots);
-    // Bottom right, under the panel: the attribution starts open and folds to its
-    // ⓘ once the map is dragged; the scale bar sits above it.
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    map.addControl(new maplibregl.ScaleControl({ maxWidth: 120 }), 'bottom-left');
+    // Bottom right, under the timeline: the attribution starts open and folds to
+    // its ⓘ once the map is dragged.
     map.addControl(new maplibregl.AttributionControl({
         compact: true,
         customAttribution: '<a href="https://maplibre.org/" target="_blank">MapLibre</a>',
     }), 'bottom-right');
-    map.addControl(new maplibregl.ScaleControl({ maxWidth: 100 }), 'bottom-right');
     trackCornerHeight(map);
     foldAttributionOnPhone(map);
 

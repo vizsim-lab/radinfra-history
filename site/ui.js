@@ -1,8 +1,6 @@
-// The page around the map, after vizsim/unfallkarte: one fast tooltip for every
-// [data-tip], panel sections that fold, the background panel at the bottom left,
-// zoom tiles there, and the layout variables that follow the timeline's height.
-
-import { formatDate } from './timeline.js';
+// The page around the map, with the look of vizsim/unfallkarte: one fast tooltip
+// for every [data-tip], panel sections that fold, and the layout variables that
+// follow the timeline and the attribution.
 
 export const MOBILE_QUERY = '(max-width: 640px)';
 
@@ -99,13 +97,15 @@ export function setPanelCollapsed(collapsed) {
     const panel = document.getElementById('panel');
     const button = document.getElementById('panel-toggle');
     panel.classList.toggle('collapsed', collapsed);
+    // On a phone the open panel reaches down to the timeline; CSS moves things aside.
+    document.body.classList.toggle('panel-open', !collapsed);
     button.classList.toggle('open', !collapsed);
     button.setAttribute('aria-expanded', String(!collapsed));
     button.setAttribute('aria-label', collapsed ? 'Panel ausklappen' : 'Panel einklappen');
 }
 
 // The title row folds the whole panel, a section's title row that section.
-// Clicks on controls inside a title (the section checkbox, an ⓘ) do their own thing.
+// Clicks on controls inside a title (a link, an ⓘ) do their own thing.
 export function setupPanel() {
     const panel = document.getElementById('panel');
     const ownClick = (event) => event.target.closest('a, input, select, label, .info-icon');
@@ -130,22 +130,8 @@ export function setupPanel() {
     }
 }
 
-// The background panel opens above its button at the bottom left.
-export function setupMapSettings() {
-    const toggle = document.getElementById('map-settings-toggle');
-    const panel = document.getElementById('map-settings-panel');
-    const set = (open) => {
-        panel.classList.toggle('is-collapsed', !open);
-        toggle.setAttribute('aria-expanded', String(open));
-    };
-    toggle.addEventListener('click', () => set(panel.classList.contains('is-collapsed')));
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape' && !panel.classList.contains('is-collapsed')) set(false);
-    });
-}
-
-// The panel, the corner controls and the map buttons sit above the timeline on
-// narrow screens, so CSS needs its height; it changes with the table view.
+// The panel and the zoom buttons sit above the timeline on narrow screens, so
+// CSS needs its height; it changes with the table view.
 export function trackTimelineHeight() {
     const node = document.getElementById('timeline-panel');
     const publish = () => {
@@ -156,16 +142,10 @@ export function trackTimelineHeight() {
     publish();
 }
 
-// Zoom buttons as tiles in their own container, not in MapLibre's corner.
-export function addNavigation(map) {
-    const nav = new maplibregl.NavigationControl({ showCompass: false });
-    document.getElementById('custom-nav-control').appendChild(nav.onAdd(map));
-}
-
-// The bottom right corner (scale bar over the attribution) changes height: the
-// attribution starts open, folds to its ⓘ once the map is dragged, and the aerial
-// photo adds a credit. The panel ends above it, so CSS gets the room the corner
-// takes from the bottom edge. Call after the corner's controls are added.
+// The attribution in the bottom right changes height: it starts open, folds to its
+// ⓘ once the map is dragged, and the aerial photo adds a credit. The timeline sits
+// above it, so CSS gets the room it takes from the bottom edge. Call after the
+// corner's controls are added.
 export function trackCornerHeight(map) {
     const container = map.getContainer();
     const corner = container.querySelector('.maplibregl-ctrl-bottom-right');
@@ -178,13 +158,11 @@ export function trackCornerHeight(map) {
     };
     const observer = new ResizeObserver(publish);
     for (const c of controls) observer.observe(c);
-    // Above the timeline on narrow screens, so it also moves with that.
-    observer.observe(document.getElementById('timeline-panel'));
     window.addEventListener('resize', publish);
     publish();
 }
 
-// On a phone the open attribution would lie across the map above the timeline;
+// On a phone the open attribution would push the timeline up by several lines;
 // there it starts folded, as in vizsim/unfallkarte. Once is enough: MapLibre
 // opens it by itself only when it first turns compact.
 export function foldAttributionOnPhone(map) {
@@ -205,19 +183,4 @@ export function bindZoomLinks(map) {
             if (map.getZoom() < zoom) map.easeTo({ zoom: zoom + 0.5 });
         });
     }
-}
-
-// Footer row: how many snapshots there are, and the zoom level.
-export function bindFooter(map, snapshots) {
-    const count = document.getElementById('fc-snapshots');
-    count.textContent = `${snapshots.length} Stände`;
-    document.getElementById('fc-snapshots-chip').dataset.tip = `${snapshots.length} Stände aus der OSM-Historie, `
-        + `vierteljährlich vom ${formatDate(snapshots[0].date)} bis ${formatDate(snapshots[snapshots.length - 1].date)}`;
-    const zoom = document.getElementById('fc-zoom');
-    const format = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-    const update = () => {
-        zoom.textContent = format.format(map.getZoom());
-    };
-    map.on('zoom', update);
-    update();
 }
