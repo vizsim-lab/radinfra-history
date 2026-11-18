@@ -1,7 +1,10 @@
 import {
     AREAS_GEOJSON_URL,
     AREAS_URL,
+    ATTRIBUTION,
+    BASEMAP_ATTRIBUTION,
     BASEMAP_STYLE,
+    DATA_ATTRIBUTION,
     DEEP_HISTORY_URL,
     DETAIL_MINZOOM,
     HOVER_DELAY_MS,
@@ -101,6 +104,22 @@ function optionalJSON(url, what, options) {
         console.warn(`${what} unavailable:`, error);
         return null;
     });
+}
+
+// The basemap style, with its own credit in place of the one in its TileJSON
+// (explicit source options win over TileJSON in MapLibre). If it cannot be read
+// here, MapLibre loads it from the URL, with the longer credit.
+async function basemapStyle(url) {
+    try {
+        const style = await fetchJSON(url);
+        for (const source of Object.values(style.sources ?? {})) {
+            if (source.type === 'vector') source.attribution = BASEMAP_ATTRIBUTION;
+        }
+        return style;
+    } catch (error) {
+        console.warn('basemap style:', error);
+        return url;
+    }
 }
 
 function debounce(fn, ms) {
@@ -399,14 +418,15 @@ async function main() {
     setupPanel();
     trackTimelineHeight();
 
-    // With metadata, the protocol hands MapLibre the archive's full TileJSON,
-    // attribution included; without it the tiles' credit never reached the map.
-    const protocol = new pmtiles.Protocol({ metadata: true });
+    // The sources name their credit themselves (DATA_ATTRIBUTION), so the protocol
+    // needs no archive metadata.
+    const protocol = new pmtiles.Protocol();
     maplibregl.addProtocol('pmtiles', protocol.tile);
 
-    const [timeline, style, imageryList, areasData, areasGeojson] = await Promise.all([
+    const [timeline, style, basemap, imageryList, areasData, areasGeojson] = await Promise.all([
         fetchJSON(TIMELINE_URL, { fresh: true }),
         fetchJSON(STYLE_URL),
+        basemapStyle(BASEMAP_STYLE),
         optionalJSON(IMAGERY_URL, 'imagery list'),
         optionalJSON(AREAS_URL, 'area statistics', { fresh: true }),
         optionalJSON(AREAS_GEOJSON_URL, 'area boundaries', { fresh: true }),
@@ -425,7 +445,7 @@ async function main() {
 
     const map = new maplibregl.Map({
         container: 'map',
-        style: BASEMAP_STYLE,
+        style: basemap,
         center: initialMapConfig.center,
         zoom: initialMapConfig.zoom,
         minZoom: initialMapConfig.minZoom,
@@ -440,10 +460,8 @@ async function main() {
     map.addControl(new maplibregl.ScaleControl({ maxWidth: 120 }), 'bottom-left');
     // Bottom right, under the timeline: the attribution starts open and folds to
     // its ⓘ once the map is dragged.
-    map.addControl(new maplibregl.AttributionControl({
-        compact: true,
-        customAttribution: '<a href="https://maplibre.org/" target="_blank">MapLibre</a>',
-    }), 'bottom-right');
+    map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: ATTRIBUTION }),
+        'bottom-right');
     trackCornerHeight(map);
     foldAttributionOnPhone(map);
 
@@ -452,8 +470,9 @@ async function main() {
     map.on('load', () => {
         // Set before the layers exist, so their first render is already filtered.
         map.setGlobalStateProperty('t', snapshots[index].key);
-        map.addSource(SOURCE_ID, { type: 'vector', url: tilesURL(build), encoding: TILE_ENCODING });
-        map.addSource(OVERVIEW_SOURCE_ID, { type: 'vector', url: overviewTilesURL(build), encoding: TILE_ENCODING });
+        const tiles = { type: 'vector', encoding: TILE_ENCODING, attribution: DATA_ATTRIBUTION };
+        map.addSource(SOURCE_ID, { ...tiles, url: tilesURL(build) });
+        map.addSource(OVERVIEW_SOURCE_ID, { ...tiles, url: overviewTilesURL(build) });
 
         // The halo is switched with feature-state rather than a filter, so a hover
         // never touches the layer's filter. Invisible except on the hovered version.

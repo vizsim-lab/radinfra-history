@@ -72,6 +72,18 @@ export function groupLabel(layerId) {
 
 export const BASEMAP_STYLE = 'https://tiles.openfreemap.org/styles/positron';
 
+// The attribution names OpenStreetMap once, for basemap and data alike, and in the
+// control itself, so it stays when the lines or the basemap are switched off. The
+// sources only add what is theirs; the basemap's own credit, which names
+// OpenStreetMap again, is replaced.
+const link = (href, text) => `<a href="${href}" target="_blank" rel="noopener">${text}</a>`;
+export const ATTRIBUTION = [
+    link('https://maplibre.org/', 'MapLibre'),
+    link('https://www.openstreetmap.org/copyright', '© OpenStreetMap-Mitwirkende'),
+];
+export const DATA_ATTRIBUTION = `Klassifikation nach ${link('https://radinfra.de', 'radinfra.de')} · ${link('https://github.com/rush42/OSMnexus', 'OSMnexus')}`;
+export const BASEMAP_ATTRIBUTION = `${link('https://openfreemap.org', 'OpenFreeMap')} ${link('https://www.openmaptiles.org/', '© OpenMapTiles')}`;
+
 export const initialMapConfig = {
     center: [13.4050, 52.5100],
     zoom: 11,

@@ -210,6 +210,10 @@ uv run python -m pipeline all --pbf 'data/dated/berlin-*.osm.pbf'
 `scripts/serve.py` instead of `python -m http.server`, because PMTiles reads byte
 ranges and the stock server ignores `Range`.
 
+The link preview for Mastodon, Slack and the like (`site/og.png`, named in the
+page's Open Graph tags) is drawn from a build by `uv run python scripts/og_image.py`;
+it needs `rsvg-convert` and the Inter font.
+
 Berlin, 45 snapshots on a 2-core machine: about 15 s per snapshot to cut and 10 s to
 classify.
 
