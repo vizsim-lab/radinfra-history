@@ -186,4 +186,11 @@ def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_json, out_geo
     print(f"  {len(areas)} areas ({sum(a['level'] == 'Bezirk' for a in areas)} Bezirke, "
           f"{sum(a['level'] == 'Ortsteil' for a in areas)} Ortsteile); "
           f"Berlin now {berlin_now:,.0f} km of {timeline['total_km'][-1]:,.0f} km in the extract", flush=True)
+    # What the newest snapshot changed, and how much of it in Berlin: a new kind of
+    # extract would show up as changes outside, at its edge.
+    in_berlin = np.zeros(len(lines), dtype=bool)
+    in_berlin[line_i[area_i == 0]] = True
+    starts, ends = k0 == n - 1, k1 == n - 2
+    print(f"  newest snapshot: {starts.sum():,} versions start, {ends.sum():,} end; "
+          f"in Berlin {(starts & in_berlin).sum():,} and {(ends & in_berlin).sum():,}", flush=True)
     return out

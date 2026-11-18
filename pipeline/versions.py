@@ -308,13 +308,23 @@ def append_snapshot(versions_parquet, timeline_json, classified, snapshot_date):
     timeline = _timeline(dates, keys, category, k0, k1, counted_m(length, dirs), timeline.get("region"),
                          _build_id(versions_parquet))
     _write_json(timeline_json, timeline)
-    counts = {
-        "continued": con.execute("SELECT count(*) FROM cont").fetchone()[0],
-        "ended": con.execute(f"SELECT count(*) FROM v WHERE t = {dn}").fetchone()[0],
-        "added": len(vid),
-    }
-    print(f"  {snapshot_date}: {counts['continued']:,} versions run on, {counts['ended']:,} end, "
-          f"{counts['added']:,} new", flush=True)
+    # Why versions end, for the log of the unattended update: a jump in one reason
+    # (say, geometry from a differently cut extract) is easy to spot there.
+    reasons = con.execute("""
+        SELECT count(*) FILTER (WHERE n.id IS NULL),
+               count(*) FILTER (WHERE n.category <> o.category),
+               count(*) FILTER (WHERE n.category = o.category AND n.gh <> o.gh),
+               count(*) FILTER (WHERE n.category = o.category AND n.gh = o.gh
+                                AND n.name IS DISTINCT FROM o.name),
+               count(*) FILTER (WHERE n.category = o.category AND n.gh = o.gh
+                                AND n.name IS NOT DISTINCT FROM o.name AND n.dirs <> o.dirs)
+        FROM o LEFT JOIN n USING (id)
+        WHERE o.vid NOT IN (SELECT vid FROM cont)
+    """).fetchone()
+    continued = con.execute("SELECT count(*) FROM cont").fetchone()[0]
+    print(f"  {snapshot_date}: {continued:,} versions run on, {sum(reasons):,} end "
+          f"(gone {reasons[0]:,}, category {reasons[1]:,}, geometry {reasons[2]:,}, "
+          f"name {reasons[3]:,}, directions {reasons[4]:,}), {len(vid):,} new", flush=True)
     return timeline
 
 
