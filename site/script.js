@@ -6,7 +6,6 @@ import {
     HOVER_LAYER_ID,
     IMAGERY_URL,
     LAYER_PREFIX,
-    LIVE,
     OVERVIEW_SOURCE_LAYER,
     PLAY_INTERVAL_MS,
     PMTILES_URL,
@@ -181,17 +180,6 @@ function historyLayerSpec(group, overview) {
     };
 }
 
-function liveLayerSpec(group, sourceLayer) {
-    const { layer } = group;
-    return {
-        ...layer,
-        id: LIVE.layerPrefix + layer.id,
-        source: LIVE.sourceId,
-        'source-layer': layer['source-layer'] ?? sourceLayer,
-        layout: { ...(layer.layout ?? {}), visibility: 'none' },
-    };
-}
-
 // Legend swatch mirrors the mark: a short line, dashed where the style dashes it.
 function swatch(color, dash) {
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -210,7 +198,7 @@ function swatch(color, dash) {
     return svg;
 }
 
-function buildLegend(map, groups, timeline, liveState) {
+function buildLegend(map, groups, timeline) {
     const list = document.getElementById('legend-items');
     const kmByGroup = new Map(timeline.groups.map((g) => [g.id, g.km]));
     const visible = new Map(groups.map((g) => [g.id, true]));
@@ -223,10 +211,6 @@ function buildLegend(map, groups, timeline, liveState) {
                 if (map.getLayer(historyId)) {
                     map.setLayoutProperty(historyId, 'visibility', on ? 'visible' : 'none');
                 }
-            }
-            const liveId = LIVE.layerPrefix + group.id;
-            if (map.getLayer(liveId)) {
-                map.setLayoutProperty(liveId, 'visibility', on && liveState.on ? 'visible' : 'none');
             }
         }
     };
@@ -308,7 +292,7 @@ function featureBounds(geometry) {
 const SIDE_LABELS = { l: 'linke Straßenseite', r: 'rechte Straßenseite', s: 'eigener Weg' };
 
 // Built with DOM nodes and textContent: names and ids come from OSM data.
-function popupContent(props, { groupOf, snapshots, liveHref }) {
+function popupContent(props, { groupOf, snapshots, radinfraHref }) {
     const keys = snapshots.map((s) => s.key);
     const f = Number(props.f);
     const t = Number(props.t);
@@ -382,7 +366,7 @@ function popupContent(props, { groupOf, snapshots, liveHref }) {
         link(`https://www.openstreetmap.org/way/${wayId}`, `Way ${wayId} auf openstreetmap.org`);
         link(DEEP_HISTORY_URL(wayId), 'Versionsgeschichte (OSM Deep History)');
     }
-    if (liveHref) link(liveHref, 'Heutiger Stand bei radinfra.de');
+    if (radinfraHref) link(radinfraHref, 'Heutiger Stand bei radinfra.de');
     root.appendChild(links);
     return root;
 }
@@ -457,7 +441,11 @@ function bindBasemapSwitch(imagery, currentDate) {
         note.replaceChildren();
         const strong = document.createElement('strong');
         strong.textContent = `Luftbild ${v.label}`;
-        note.append(strong, document.createTextNode(` (aufgenommen ${v.captured}), das jüngste vor dem gewählten Datenstand. `));
+        // Before the first capture there is nothing older to show; say so.
+        const relation = v.start > currentDate()
+            ? 'das früheste verfügbare, aufgenommen nach dem gewählten Datenstand'
+            : 'das jüngste vor dem gewählten Datenstand';
+        note.append(strong, document.createTextNode(` (aufgenommen ${v.captured}), ${relation}. `));
         const credit = document.createElement('span');
         credit.className = 'legend-note__credit';
         credit.textContent = v.attribution;
@@ -547,25 +535,14 @@ async function main() {
         // Only the detail layers carry ids and names, so only they are hit-tested.
         const historyIds = groups.map((g) => historyLayerId(g, false));
 
-        // radinfra.de live, for comparing the newest snapshot with today. Off by
-        // default and drawn on top.
-        const liveSource = Object.values(style.sources ?? {})[0];
-        const liveState = { on: false };
-        const sourceLayer = (style.layers ?? []).find((l) => l['source-layer'])?.['source-layer'];
-        if (liveSource) {
-            map.addSource(LIVE.sourceId, liveSource);
-            for (const group of groups) map.addLayer(liveLayerSpec(group, sourceLayer));
-        }
-
         const imagery = imageryList?.variants?.length ? createImagery(map, {
             variants: imageryList.variants,
             beforeId: HOVER_LAYER_ID,
-            isOwnLayer: (id) => id === HOVER_LAYER_ID || id.startsWith(LAYER_PREFIX)
-                || id.startsWith(LIVE.layerPrefix),
+            isOwnLayer: (id) => id === HOVER_LAYER_ID || id.startsWith(LAYER_PREFIX),
         }) : null;
         const describeImagery = bindBasemapSwitch(imagery, () => snapshots[index].date);
 
-        const legend = buildLegend(map, groups, timeline, liveState);
+        const legend = buildLegend(map, groups, timeline);
         buildTable(timeline);
 
         const readoutDate = document.getElementById('tl-date');
@@ -653,28 +630,6 @@ async function main() {
         control.set(index, { notify: false });
         show(index);
 
-        const liveToggle = document.getElementById('toggle-live');
-        if (!liveSource) {
-            liveToggle.disabled = true;
-        }
-        liveToggle.addEventListener('change', () => {
-            liveState.on = liveToggle.checked;
-            // Only the newest snapshot is comparable with today's data.
-            if (liveState.on) {
-                stop();
-                control.set(snapshots.length - 1);
-            }
-            legend.apply();
-        });
-
-        const updateDeepLinks = () => {
-            const center = map.getCenter();
-            const href = radinfraURL({ zoom: map.getZoom(), lat: center.lat, lng: center.lng });
-            for (const a of document.querySelectorAll('.radinfra-deeplink')) a.href = href;
-        };
-        map.on('moveend', updateDeepLinks);
-        updateDeepLinks();
-
         // Hover and click query the drawn history layers, so a hidden category or
         // a version not valid at the selected date can never be hit.
         const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '340px' });
@@ -728,7 +683,7 @@ async function main() {
             }
             const wayId = osmWayId(top.properties.id);
             const bounds = featureBounds(top.geometry);
-            const liveHref = wayId && bounds ? radinfraURL({
+            const radinfraHref = wayId && bounds ? radinfraURL({
                 zoom: Math.max(map.getZoom(), 16),
                 lat: event.lngLat.lat,
                 lng: event.lngLat.lng,
@@ -737,7 +692,7 @@ async function main() {
             }) : null;
             popup
                 .setLngLat(event.lngLat)
-                .setDOMContent(popupContent(top.properties, { groupOf, snapshots, liveHref }))
+                .setDOMContent(popupContent(top.properties, { groupOf, snapshots, radinfraHref }))
                 .addTo(map);
         });
     });

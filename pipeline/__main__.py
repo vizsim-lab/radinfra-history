@@ -1,6 +1,6 @@
 """radinfra-history pipeline.
 
-    uv run python -m pipeline all --osh berlin-internal.osh.pbf --start 2020-01-01 --step 3
+    uv run python -m pipeline all --osh berlin-internal.osh.pbf --start 2016-01-01 --step 3
     uv run python -m pipeline all --pbf data/dated/berlin-2*.osm.pbf
 
 Steps, each also runnable on its own: snapshots -> classify -> versions -> tiles.
@@ -48,7 +48,7 @@ def main():
     parser.add_argument("command", choices=["all", "snapshots", "classify", "versions", "tiles"])
     source = parser.add_argument_group("input (snapshots, classify, all)")
     source.add_argument("--osh", help="full-history .osh.pbf to cut snapshots from")
-    source.add_argument("--start", default="2020-01-01", help="first snapshot date (default 2020-01-01)")
+    source.add_argument("--start", default="2016-01-01", help="first snapshot date (default 2016-01-01)")
     source.add_argument("--step", type=int, default=3, help="months between snapshots (default 3)")
     source.add_argument("--end", help="last regular snapshot date (default: end of the history file)")
     source.add_argument("--pbf", nargs="*", default=[], help="dated extracts instead of --osh (globs ok)")

@@ -4,7 +4,7 @@ How the cycling infrastructure recorded in OpenStreetMap has changed over time,
 classified the way [radinfra.de](https://radinfra.de) classifies it today, on one
 map with a time slider.
 
-Pilot: **Berlin, quarterly from January 2020 to the newest state of the history file.**
+Pilot: **Berlin, quarterly from January 2016 to the newest state of the history file.**
 
 The map draws radinfra.de's own "details" style — same categories, colours and
 dashes — against data computed here for every snapshot. Each side of a road is
@@ -129,7 +129,7 @@ OSMnexus release binary).
 uv sync
 ./scripts/fetch_osmnexus.sh            # pinned OSMnexus binary + tilda config → .tools/
 
-uv run python -m pipeline all --osh berlin-internal.osh.pbf --start 2020-01-01 --step 3
+uv run python -m pipeline all --osh berlin-internal.osh.pbf --start 2016-01-01 --step 3
 uv run python scripts/serve.py         # http://127.0.0.1:8765
 ```
 
@@ -144,7 +144,7 @@ uv run python -m pipeline all --pbf 'data/dated/berlin-*.osm.pbf'
 `scripts/serve.py` instead of `python -m http.server`, because PMTiles reads byte
 ranges and the stock server ignores `Range`.
 
-Berlin, 29 snapshots on a 2-core machine: about 15 s per snapshot to cut and 10 s to
+Berlin, 45 snapshots on a 2-core machine: about 15 s per snapshot to cut and 10 s to
 classify.
 
 ## Publishing

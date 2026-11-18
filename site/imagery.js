@@ -3,7 +3,8 @@
 // The capture list (site/data/berlin_imagery.json) comes from the OSM Editor Layer
 // Index, see scripts/imagery/build.mjs. For a snapshot the newest photo taken on or
 // before that date is shown, so the background is what mappers could have seen at
-// the time. Photos dated only by year count from 1 January.
+// the time. Photos dated only by year count from 1 January. Before the first
+// capture the oldest photo is shown, and the panel says that it is newer.
 //
 // While the photo is on, the vector basemap keeps only its labels; its fills would
 // otherwise cover the photo.

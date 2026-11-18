@@ -30,14 +30,12 @@ export const DETAIL_MINZOOM = 12;
 // Invisible click target in the tilda style; hit testing here does not need it.
 export const SKIP_LAYER_IDS = ['hitarea-bikelanes-details'];
 
-// The same style against radinfra.de's live tiles, as an optional comparison.
-export const LIVE = {
-    sourceId: 'radinfra-live',
-    layerPrefix: 'live-',
-    siteURL: 'https://tilda-geo.de/regionen/radinfra',
+// radinfra.de, for the popup's link to a way's current state there.
+export const RADINFRA_SITE = {
+    url: 'https://tilda-geo.de/regionen/radinfra',
     // Opaque hash from a shared radinfra.de link (taken over from vizsim/bikeneat);
     // it selects which layers the target page shows.
-    siteConfig: '1p2va4k.7h3d.9fm70g',
+    config: '1p2va4k.7h3d.9fm70g',
 };
 
 // Friendlier names than the style's layer ids, as radinfra.de shows them in its
@@ -114,12 +112,12 @@ export const URL_DEBOUNCE_MS = 400;
 export function radinfraURL({ zoom, lat, lng, wayId = null, bounds = null }) {
     const parts = [
         `map=${zoom.toFixed(1)}/${lat.toFixed(4)}/${lng.toFixed(4)}`,
-        `config=${LIVE.siteConfig}`,
+        `config=${RADINFRA_SITE.config}`,
         'v=2',
     ];
     if (wayId && bounds) {
         const [west, south, east, north] = bounds.map((n) => n.toFixed(6));
         parts.push(`f=10|way/${wayId}|${west}|${south}|${east}|${north}`);
     }
-    return `${LIVE.siteURL}?${parts.join('&')}`;
+    return `${RADINFRA_SITE.url}?${parts.join('&')}`;
 }
