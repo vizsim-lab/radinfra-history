@@ -114,18 +114,20 @@ classify.
 
 ## Publishing
 
-The built tiles and timeline are assets of the release tagged `data`, not commits,
-so the repository does not grow with every rebuild:
+The built tiles and timeline are not committed to `main`. They live on the `data`
+branch as a single commit that is replaced on every publish, so old tilesets do
+not pile up in the history:
 
 ```bash
-gh release upload data site/tiles/berlin.pmtiles site/data/berlin_timeline.json --clobber
+./scripts/publish_data.sh       # force-pushes `data`, then starts the Pages workflow
 ```
 
-[.github/workflows/pages.yml](.github/workflows/pages.yml) puts them next to the
-page and deploys `site/` to GitHub Pages. For Germany as a whole the archive will
-outgrow GitHub; then the tiles move to object storage (B2) with a CORS rule that
-allows `Range`, and only `PMTILES_URL` in [site/config.js](site/config.js) changes.
-`scripts/fetch_data.sh` downloads the published data for local work on the page.
+[.github/workflows/pages.yml](.github/workflows/pages.yml) copies them next to the
+page and deploys `site/` to GitHub Pages, on one origin with the page. For Germany
+as a whole the archive will outgrow GitHub; then the tiles move to object storage
+(B2) with a CORS rule that allows `Range`, and only `PMTILES_URL` in
+[site/config.js](site/config.js) changes. `scripts/fetch_data.sh` puts the
+published data into `site/` for local work on the page.
 
 ## Credits
 
