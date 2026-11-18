@@ -32,8 +32,25 @@ EARTH_RADIUS_M = 6_371_008.8
 def lengths_m(wkb):
     """Great-circle length in metres of each WKB (Multi)LineString."""
     # DuckDB hands BLOBs back as bytearray; shapely wants bytes.
-    geoms = shapely.from_wkb(np.asarray([bytes(b) for b in wkb], dtype=object))
-    parts, part_index = shapely.get_parts(geoms, return_index=True)
+    return geometry_lengths_m(shapely.from_wkb(np.asarray([bytes(b) for b in wkb], dtype=object)))
+
+
+def _explode(geoms):
+    """Single parts of each geometry, through nested multi-parts and collections."""
+    parts, index = shapely.get_parts(geoms, return_index=True)
+    while True:
+        nested = shapely.get_num_geometries(parts) > 1
+        nested |= np.isin(shapely.get_type_id(parts), [4, 5, 6, 7])
+        if not nested.any():
+            return parts, index
+        sub, sub_index = shapely.get_parts(parts, return_index=True)
+        parts, index = sub, index[sub_index]
+
+
+def geometry_lengths_m(geoms):
+    """Great-circle length in metres of each geometry's lines (points count zero)."""
+    geoms = np.asarray(geoms, dtype=object)
+    parts, part_index = _explode(geoms)
     coords, coord_index = shapely.get_coordinates(parts, return_index=True)
     if len(coords) < 2:
         return np.zeros(len(geoms))

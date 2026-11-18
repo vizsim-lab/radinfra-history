@@ -1,4 +1,6 @@
 import {
+    AREAS_GEOJSON_URL,
+    AREAS_URL,
     BASEMAP_STYLE,
     DEEP_HISTORY_URL,
     DETAIL_MINZOOM,
@@ -23,21 +25,27 @@ import {
     initialMapConfig,
     radinfraURL,
 } from './config.js';
+import { createAreas } from './areas.js';
 import { createImagery } from './imagery.js';
 import {
-    createTimeline,
-    formatDate,
-    formatKm,
-    formatShortDate,
-    sparkline,
-} from './timeline.js';
+    bindBasemapSwitch,
+    bindLoadingIndicator,
+    bindPanelToggle,
+    buildLegend,
+    createTable,
+    describeArea,
+    fillAreaSelect,
+    fillChangeFrom,
+    renderChanges,
+} from './panel.js';
+import { createTimeline, formatDate, formatKm, formatShortDate } from './timeline.js';
 
 const HIT_PADDING = 6;
 const OPEN_END = 99991231;
 
 // Versions valid at the selected snapshot: f <= t_selected < t. The selected
 // snapshot key lives in the style's global state, so moving the slider changes
-// one value instead of thirteen filters.
+// one value instead of filters on every layer.
 const AT_SELECTED_TIME = ['all',
     ['<=', ['to-number', ['get', 'f']], ['to-number', ['global-state', 't']]],
     ['>', ['to-number', ['get', 't']], ['to-number', ['global-state', 't']]],
@@ -67,6 +75,14 @@ async function fetchJSON(url) {
     const response = await fetch(url);
     if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
     return response.json();
+}
+
+// Optional data: without it the page still works, the feature is just missing.
+function optionalJSON(url, what) {
+    return fetchJSON(url).catch((error) => {
+        console.warn(`${what} unavailable:`, error);
+        return null;
+    });
 }
 
 function debounce(fn, ms) {
@@ -180,95 +196,6 @@ function historyLayerSpec(group, overview) {
     };
 }
 
-// Legend swatch mirrors the mark: a short line, dashed where the style dashes it.
-function swatch(color, dash) {
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    svg.setAttribute('class', 'legend-color');
-    svg.setAttribute('viewBox', '0 0 18 6');
-    svg.setAttribute('aria-hidden', 'true');
-    const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-    line.setAttribute('x1', '0');
-    line.setAttribute('x2', '18');
-    line.setAttribute('y1', '3');
-    line.setAttribute('y2', '3');
-    line.setAttribute('stroke', color);
-    line.setAttribute('stroke-width', '3');
-    if (Array.isArray(dash)) line.setAttribute('stroke-dasharray', dash.map((d) => d * 3).join(' '));
-    svg.appendChild(line);
-    return svg;
-}
-
-function buildLegend(map, groups, timeline) {
-    const list = document.getElementById('legend-items');
-    const kmByGroup = new Map(timeline.groups.map((g) => [g.id, g.km]));
-    const visible = new Map(groups.map((g) => [g.id, true]));
-    const rows = [];
-
-    const apply = () => {
-        for (const group of groups) {
-            const on = visible.get(group.id);
-            for (const historyId of [historyLayerId(group, true), historyLayerId(group, false)]) {
-                if (map.getLayer(historyId)) {
-                    map.setLayoutProperty(historyId, 'visibility', on ? 'visible' : 'none');
-                }
-            }
-        }
-    };
-
-    // A style lists layers bottom to top; the legend reads top to bottom, so the
-    // order is reversed for display only.
-    for (const group of [...groups].reverse()) {
-        const km = kmByGroup.get(group.id) ?? timeline.snapshots.map(() => 0);
-        const row = document.createElement('button');
-        row.type = 'button';
-        row.className = 'legend-item legend-item--toggle';
-        row.setAttribute('role', 'switch');
-        row.setAttribute('aria-checked', 'true');
-
-        const text = document.createElement('span');
-        text.className = 'legend-label';
-        text.textContent = group.label;
-
-        const spark = sparkline(km, group.color);
-        const value = document.createElement('span');
-        value.className = 'legend-km';
-
-        row.append(swatch(group.color, group.dash), text, spark.node, value);
-        row.addEventListener('click', () => {
-            const next = row.getAttribute('aria-checked') !== 'true';
-            row.setAttribute('aria-checked', String(next));
-            visible.set(group.id, next);
-            apply();
-        });
-        list.appendChild(row);
-        rows.push({ km, spark, value, row, group });
-    }
-
-    return {
-        apply,
-        update(index) {
-            for (const { km, spark, value, row, group } of rows) {
-                spark.mark(index);
-                value.textContent = formatKm(km[index]);
-                row.title = `${group.label}: ${formatKm(km[index])} am ${formatDate(timeline.snapshots[index].date)}`;
-            }
-        },
-    };
-}
-
-function buildTable(timeline) {
-    const tbody = document.querySelector('#tl-table tbody');
-    timeline.snapshots.forEach((snapshot, i) => {
-        const tr = document.createElement('tr');
-        const date = document.createElement('td');
-        date.textContent = formatShortDate(snapshot.date);
-        const km = document.createElement('td');
-        km.textContent = formatKm(timeline.total_km[i]);
-        tr.append(date, km);
-        tbody.appendChild(tr);
-    });
-}
-
 function osmWayId(id) {
     const match = /^way\/(\d+)/.exec(String(id ?? ''));
     return match ? match[1] : null;
@@ -371,44 +298,6 @@ function popupContent(props, { groupOf, snapshots, radinfraHref }) {
     return root;
 }
 
-// Most of the wait when zooming is the basemap, so the indicator follows the
-// map's own load state rather than our source (as in vizsim/bikeneat).
-function bindLoadingIndicator(map) {
-    const node = document.getElementById('loading');
-    let timer = null;
-    let idle = true;
-    const show = () => {
-        idle = false;
-        if (timer !== null || node.classList.contains('is-visible')) return;
-        timer = window.setTimeout(() => {
-            timer = null;
-            if (!idle) node.classList.add('is-visible');
-        }, 250);
-    };
-    const hide = () => {
-        idle = true;
-        if (timer !== null) window.clearTimeout(timer);
-        timer = null;
-        node.classList.remove('is-visible');
-    };
-    map.on('movestart', show);
-    map.on('dataloading', show);
-    map.on('idle', hide);
-}
-
-function bindPanelToggle() {
-    const panel = document.querySelector('.panel');
-    const button = document.getElementById('panel-toggle');
-    button.addEventListener('click', () => {
-        const collapsed = button.getAttribute('aria-expanded') === 'true';
-        panel.classList.toggle('is-collapsed', collapsed);
-        button.setAttribute('aria-expanded', String(!collapsed));
-        const label = collapsed ? 'Panel ausklappen' : 'Panel einklappen';
-        button.setAttribute('aria-label', label);
-        button.title = label;
-    });
-}
-
 function initialIndex(snapshots) {
     const wanted = new URLSearchParams(window.location.search).get('t');
     if (!wanted) return snapshots.length - 1;
@@ -420,46 +309,32 @@ function initialIndex(snapshots) {
     return index;
 }
 
-function writeIndexToURL(snapshots, index) {
+// ?t= for the date (left out for the newest), ?area= for the area (left out for
+// Berlin as a whole), so a view can be shared.
+function writeStateToURL(snapshots, index, areaSlug) {
     const url = new URL(window.location.href);
     if (index === snapshots.length - 1) url.searchParams.delete('t');
     else url.searchParams.set('t', snapshots[index].date);
+    if (!areaSlug || areaSlug === 'berlin') url.searchParams.delete('area');
+    else url.searchParams.set('area', areaSlug);
     window.history.replaceState(window.history.state, '', url);
 }
 
-function bindBasemapSwitch(imagery, currentDate) {
-    const buttons = [...document.querySelectorAll('[data-basemap]')];
-    const note = document.getElementById('aerial-note');
-    if (!imagery) {
-        for (const b of buttons) if (b.dataset.basemap === 'aerial') b.disabled = true;
-        return () => {};
-    }
-    const describe = () => {
-        const v = imagery.current;
-        note.hidden = !imagery.on || !v;
-        if (!v) return;
-        note.replaceChildren();
-        const strong = document.createElement('strong');
-        strong.textContent = `Luftbild ${v.label}`;
-        // Before the first capture there is nothing older to show; say so.
-        const relation = v.start > currentDate()
-            ? 'das früheste verfügbare, aufgenommen nach dem gewählten Datenstand'
-            : 'das jüngste vor dem gewählten Datenstand';
-        note.append(strong, document.createTextNode(` (aufgenommen ${v.captured}), ${relation}. `));
-        const credit = document.createElement('span');
-        credit.className = 'legend-note__credit';
-        credit.textContent = v.attribution;
-        note.append(credit);
+// Numbers for the whole extract, from the timeline, when no area data is there.
+function extractScope(timeline) {
+    return {
+        name: 'Ausschnitt',
+        area: null,
+        kmByGroup: new Map(timeline.groups.map((g) => [g.id, g.km])),
+        total: timeline.total_km,
     };
-    for (const button of buttons) {
-        button.addEventListener('click', () => {
-            const aerial = button.dataset.basemap === 'aerial';
-            for (const b of buttons) b.setAttribute('aria-checked', String(b === button));
-            imagery.setOn(aerial, currentDate());
-            describe();
-        });
-    }
-    return describe;
+}
+
+function areaScope(area, groups, snapshots) {
+    const zeros = snapshots.map(() => 0);
+    const kmByGroup = new Map(groups.map((g) => [g.id, area.km[g.id] ?? zeros]));
+    const total = snapshots.map((_, i) => groups.reduce((sum, g) => sum + (area.km[g.id]?.[i] ?? 0), 0));
+    return { name: area.slug === 'berlin' ? 'Berlin' : area.name, area, kmByGroup, total };
 }
 
 async function main() {
@@ -468,14 +343,12 @@ async function main() {
     const protocol = new pmtiles.Protocol();
     maplibregl.addProtocol('pmtiles', protocol.tile);
 
-    const [timeline, style, imageryList] = await Promise.all([
+    const [timeline, style, imageryList, areasData, areasGeojson] = await Promise.all([
         fetchJSON(TIMELINE_URL),
         fetchJSON(STYLE_URL),
-        // The photo background is optional: without its list the switch is disabled.
-        fetchJSON(IMAGERY_URL).catch((error) => {
-            console.warn('imagery list unavailable:', error);
-            return null;
-        }),
+        optionalJSON(IMAGERY_URL, 'imagery list'),
+        optionalJSON(AREAS_URL, 'area statistics'),
+        optionalJSON(AREAS_GEOJSON_URL, 'area boundaries'),
     ]);
     const { snapshots } = timeline;
     const groups = styleGroups(style);
@@ -509,9 +382,8 @@ async function main() {
         map.setGlobalStateProperty('t', snapshots[index].key);
         map.addSource(SOURCE_ID, { type: 'vector', url: PMTILES_URL });
 
-        // The halo is switched with feature-state, not with a filter: a filter
-        // change would make MapLibre re-parse every tile of the source, on every
-        // hover. Invisible everywhere except on the hovered version.
+        // The halo is switched with feature-state rather than a filter, so a hover
+        // never touches the layer's filter. Invisible except on the hovered version.
         map.addLayer({
             id: HOVER_LAYER_ID,
             type: 'line',
@@ -538,44 +410,93 @@ async function main() {
         const imagery = imageryList?.variants?.length ? createImagery(map, {
             variants: imageryList.variants,
             beforeId: HOVER_LAYER_ID,
-            isOwnLayer: (id) => id === HOVER_LAYER_ID || id.startsWith(LAYER_PREFIX),
+            isOwnLayer: (id) => id === HOVER_LAYER_ID || id.startsWith(LAYER_PREFIX) || id.startsWith('area-'),
         }) : null;
         const describeImagery = bindBasemapSwitch(imagery, () => snapshots[index].date);
 
-        const legend = buildLegend(map, groups, timeline);
-        buildTable(timeline);
+        const legend = buildLegend(groups, snapshots, (groupId, visible) => {
+            const group = groups.find((g) => g.id === groupId);
+            for (const id of [historyLayerId(group, true), historyLayerId(group, false)]) {
+                if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+            }
+        });
+        const table = createTable(snapshots);
 
         const readoutDate = document.getElementById('tl-date');
         const readoutTotal = document.getElementById('tl-total');
+        const readoutScope = document.getElementById('tl-scope');
         const legendDate = document.getElementById('legend-date');
+        const changeTo = document.getElementById('change-to');
         const playButton = document.getElementById('tl-play');
         const applier = createTimeApplier(map);
-        const writeURL = debounce((i) => writeIndexToURL(snapshots, i), URL_DEBOUNCE_MS);
+        let scope = extractScope(timeline);
+        const writeURL = debounce(() => writeStateToURL(snapshots, index, scope.area?.slug), URL_DEBOUNCE_MS);
         let playing = false;
         let playTimer = null;
+        let changeFrom = () => 0;
 
-        // Readout, legend and chart follow at once; the map gets the date through
-        // the applier, the photo with it.
+        const updateChanges = () => {
+            changeTo.textContent = formatShortDate(snapshots[index].date);
+            renderChanges(groups, scope, snapshots, changeFrom(), index);
+        };
+
+        // Readout, legend, chart and table follow at once; the map gets the date
+        // through the applier, the photo with it.
         const show = (i) => {
             index = i;
             readoutDate.textContent = formatDate(snapshots[i].date);
-            readoutTotal.textContent = formatKm(timeline.total_km[i]);
+            readoutTotal.textContent = formatKm(scope.total[i]);
             legendDate.textContent = formatShortDate(snapshots[i].date);
             legend.update(i);
+            updateChanges();
             applier.request(snapshots[i].key, { immediate: playing });
             if (imagery?.on) {
                 imagery.update(snapshots[i].date);
                 describeImagery();
             }
-            writeURL(i);
+            writeURL();
         };
 
         const control = createTimeline(document.getElementById('timeline'), {
             snapshots,
-            values: timeline.total_km,
+            values: scope.total,
             label: 'Datenstand wählen',
             onChange: show,
         });
+
+        const setScope = (next) => {
+            scope = next;
+            legend.setData(scope.kmByGroup);
+            control.setValues(scope.total);
+            table.setValues(scope.total);
+            readoutScope.textContent = `${scope.name} `;
+            readoutTotal.textContent = formatKm(scope.total[index]);
+            updateChanges();
+            writeURL();
+        };
+
+        changeFrom = fillChangeFrom(snapshots, updateChanges);
+
+        const areas = areasData && areasGeojson ? createAreas(map, {
+            data: areasData,
+            geojson: areasGeojson,
+            onSelect: (area) => {
+                setSelectValue(area.slug);
+                describeArea(area, areas);
+                setScope(areaScope(area, groups, snapshots));
+            },
+        }) : null;
+        const setSelectValue = areas ? fillAreaSelect(areas, (slug) => areas.select(slug, { fit: slug !== 'berlin' }))
+            : () => {};
+        const pickButton = document.getElementById('area-pick');
+        if (areas) {
+            pickButton.addEventListener('click', () => areas.setPicking(!areas.picking));
+            areas.select(new URLSearchParams(window.location.search).get('area') ?? 'berlin',
+                { fit: Boolean(new URLSearchParams(window.location.search).get('area')) });
+        } else {
+            document.querySelector('.area-picker').hidden = true;
+            setScope(scope);
+        }
 
         const stop = () => {
             playing = false;
@@ -631,7 +552,8 @@ async function main() {
         show(index);
 
         // Hover and click query the drawn history layers, so a hidden category or
-        // a version not valid at the selected date can never be hit.
+        // a version not valid at the selected date can never be hit. While an
+        // area is being picked on the map, lines are left alone.
         const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '340px' });
         const query = (point) => {
             const layers = historyIds.filter((id) => map.getLayer(id));
@@ -658,8 +580,11 @@ async function main() {
             if (frame !== null) return;
             frame = requestAnimationFrame(() => {
                 frame = null;
-                const top = query(pointer)[0] ?? null;
-                map.getCanvas().style.cursor = top ? 'pointer' : '';
+                const picking = areas?.picking;
+                const top = picking ? null : query(pointer)[0] ?? null;
+                const canvas = map.getCanvas();
+                const cursor = picking ? '' : top ? 'pointer' : '';
+                if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor;
                 const next = top?.id ?? null;
                 if (next === target) return;
                 target = next;
@@ -676,6 +601,7 @@ async function main() {
         });
 
         map.on('click', (event) => {
+            if (areas?.picking) return;
             const top = query(event.point)[0] ?? null;
             if (!top) {
                 popup.remove();

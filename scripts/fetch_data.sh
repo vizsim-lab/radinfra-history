@@ -10,7 +10,7 @@ mkdir -p site/tiles site/data
 for name in $(git ls-tree --name-only FETCH_HEAD); do
     case "$name" in
         *.pmtiles) git show "FETCH_HEAD:$name" > "site/tiles/$name" ;;
-        *_timeline.json) git show "FETCH_HEAD:$name" > "site/data/$name" ;;
+        *_timeline.json|*_areas.json|*_areas.geojson) git show "FETCH_HEAD:$name" > "site/data/$name" ;;
     esac
 done
 ls -l site/tiles site/data

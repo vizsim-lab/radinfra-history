@@ -45,6 +45,7 @@ jobs:
           mkdir -p site/tiles site/data
           cp _data/*.pmtiles site/tiles/
           cp _data/*_timeline.json site/data/
+          cp _data/*_areas.json _data/*_areas.geojson site/data/ 2>/dev/null || echo "no area data yet"
           ls -l site/tiles site/data
 
       - uses: actions/configure-pages@v5

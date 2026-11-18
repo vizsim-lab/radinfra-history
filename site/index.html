@@ -34,6 +34,19 @@
             </div>
 
             <div id="panel-body" class="panel-body">
+                <div class="area-picker">
+                    <label for="area-select" class="legend-columns legend-columns--section">Gebiet</label>
+                    <div class="area-row">
+                        <select id="area-select"></select>
+                        <button type="button" id="area-pick" class="area-pick" aria-pressed="false"
+                                title="Ortsteil auf der Karte anklicken">
+                            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3" /><circle cx="8" cy="8" r="3.5" /></svg>
+                            <span>Auf der Karte</span>
+                        </button>
+                    </div>
+                    <p id="area-info" class="legend-note legend-note--tight"></p>
+                </div>
+
                 <div class="legend-columns" aria-hidden="true">
                     <span>Führungsform</span>
                     <span>km am <span id="legend-date">…</span></span>
@@ -41,6 +54,22 @@
                 <div id="legend-items" class="legend-list"></div>
                 <p class="legend-hint">Auf eine Kategorie klicken, um sie aus- und einzublenden. Linien
                     lassen sich ab Zoomstufe 12 anklicken.</p>
+
+                <div class="legend-section">
+                    <div class="legend-columns legend-columns--section" aria-hidden="true">
+                        <span>Veränderung</span>
+                    </div>
+                    <p class="change-range">
+                        <label for="change-from">von</label>
+                        <select id="change-from"></select>
+                        bis <strong id="change-to">…</strong> <span class="change-range__hint">(Zeitleiste)</span>
+                    </p>
+                    <table id="change-table" class="change-table">
+                        <thead></thead>
+                        <tbody></tbody>
+                        <tfoot></tfoot>
+                    </table>
+                </div>
 
                 <p class="legend-note">
                     Jede Straßenseite ist eine eigene, zur Seite versetzte Linie und zählt
@@ -114,7 +143,7 @@
                 <strong id="tl-date">…</strong>
             </div>
             <div class="tl-readout tl-readout--right">
-                <span class="tl-readout__label"><span class="tl-long">Radinfrastruktur </span>gesamt</span>
+                <span class="tl-readout__label"><span class="tl-long" id="tl-scope">Berlin </span>gesamt</span>
                 <strong id="tl-total">…</strong>
             </div>
         </div>

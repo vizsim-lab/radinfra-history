@@ -10,7 +10,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 BRANCH="${DATA_BRANCH:-data}"
 shopt -s nullglob
-files=("$ROOT"/site/tiles/*.pmtiles "$ROOT"/site/data/*_timeline.json)
+files=("$ROOT"/site/tiles/*.pmtiles "$ROOT"/site/data/*_timeline.json "$ROOT"/site/data/*_areas.json "$ROOT"/site/data/*_areas.geojson)
 if [ ${#files[@]} -eq 0 ]; then
     echo "nothing to publish: build first (python -m pipeline all ...)" >&2
     exit 1
@@ -42,7 +42,7 @@ git add -A
 git commit --quiet -F - <<EOF
 Data as of $(date -u +%Y-%m-%d)
 
-$(cd "$tmp" && ls -l --time-style=+ *.pmtiles *_timeline.json | awk '{print $5, $NF}')
+$(cd "$tmp" && ls -l --time-style=+ *.pmtiles *.json *.geojson 2>/dev/null | awk '{print $5, $NF}')
 ${COMMIT_TRAILER:+
 $COMMIT_TRAILER}
 EOF

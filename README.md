@@ -27,10 +27,12 @@ data/classified/<date>.parquet          radinfra categories per way / side of a 
   │  pipeline/versions.py
   ▼
 data/berlin_versions.parquet            every distinct version once, with a lifespan
-  │  manby (tippecanoe-compatible)
-  ▼
-site/tiles/berlin.pmtiles               one archive for all dates
-site/data/berlin_timeline.json          km per category and snapshot
+  │  pipeline/areas.py (OSM boundaries)     │  manby (tippecanoe-compatible)
+  ▼                                         ▼
+site/data/berlin_areas.json             site/tiles/berlin.pmtiles
+  km per category, snapshot and area      one archive for all dates
+site/data/berlin_areas.geojson          site/data/berlin_timeline.json
+  Bezirke and Ortsteile                   km per category and snapshot (whole extract)
 ```
 
 **Classification.** [OSMnexus](https://github.com/rush42/OSMnexus) reimplements the
@@ -43,14 +45,20 @@ geometry whether a path runs alongside a road. That only moves objects between
 `_adjoining`, `_isolated` and `_adjoiningOrIsolated`, which the details style draws
 in one colour, so the map is unaffected.
 
-One deviation from tilda-geo is patched locally
+Two deviations from tilda-geo are patched locally
 ([scripts/patch_osmnexus_config.py](scripts/patch_osmnexus_config.py), applied by
-`fetch_osmnexus.sh`): tilda-geo never splits a path-like way (path, footway,
-cycleway, track, steps, pedestrian) into left/right objects, while OSMnexus v0.1.0
-does as soon as it has a `cycleway:*` tag. A segregated path tagged
-`cycleway:surface=asphalt` then got a dashed "Führungsform unklar" line on each
-side — about 4,300 objects and 480 km in Berlin's newest snapshot, nearly the whole
-category.
+`fetch_osmnexus.sh`):
+
+- tilda-geo never splits a path-like way (path, footway, cycleway, track, steps,
+  pedestrian) into left/right objects, while OSMnexus v0.1.0 does as soon as it has
+  a `cycleway:*` tag. A segregated path tagged `cycleway:surface=asphalt` then got a
+  dashed "Führungsform unklar" line on each side — about 4,300 objects and 480 km in
+  Berlin's newest snapshot, nearly the whole category.
+- tilda-geo drops ways that cycling may not use before classifying them: `access`
+  private / no / delivery / permit (the same values in `bicycle` on a cycleway or
+  `foot` on a footway) and service roads other than alleys unless they allow bikes.
+  OSMnexus keeps them, so for example the fenced practice tracks of a
+  Jugendverkehrsschule showed up. About 135 objects in the newest snapshot.
 
 **Versions instead of one tileset per date.** Consecutive snapshots are compared per
 object (a way, or one side of a road: `way/123/cycleway/left`). A new version
@@ -99,6 +107,15 @@ the [Editor Layer Index](https://github.com/osmlab/editor-layer-index) with
 ```bash
 cd scripts/imagery && npm ci && npm run build
 ```
+
+**Areas.** The numbers on the page — legend, trend lines, timeline, table and the
+change table — are for an area: Berlin as a whole by default (inside the state
+boundary, so without the Brandenburg edges of the extract), or one of the 12 Bezirke
+and 97 Ortsteile, picked from the list or by clicking on the map. The boundaries are
+OSM's own (admin_level 4, 9 and 10) from the newest snapshot, used for every date.
+A line crossing a boundary counts with its part inside. The change table compares
+any snapshot with the one selected on the timeline; `?area=kreuzberg` links to an
+area.
 
 ## What the map shows and what it does not
 

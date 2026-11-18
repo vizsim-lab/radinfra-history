@@ -84,6 +84,10 @@ export const SIDE_OFFSET_STOPS = [
     [20, 8],
 ];
 
+// Bezirke and Ortsteile with km per category and snapshot (pipeline/areas.py).
+export const AREAS_URL = new URL(`data/${REGION_SLUG}_areas.json`, base).href;
+export const AREAS_GEOJSON_URL = new URL(`data/${REGION_SLUG}_areas.geojson`, base).href;
+
 // Berlin's aerial photo series, from the OSM Editor Layer Index (scripts/imagery).
 export const IMAGERY_URL = new URL(`data/${REGION_SLUG}_imagery.json`, base).href;
 

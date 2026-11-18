@@ -3,7 +3,7 @@
     uv run python -m pipeline all --osh berlin-internal.osh.pbf --start 2016-01-01 --step 3
     uv run python -m pipeline all --pbf data/dated/berlin-2*.osm.pbf
 
-Steps, each also runnable on its own: snapshots -> classify -> versions -> tiles.
+Steps, each also runnable on its own: snapshots -> classify -> versions -> areas -> tiles.
 """
 
 import argparse
@@ -12,6 +12,7 @@ import time
 from pathlib import Path
 
 from . import snapshots as snaps
+from .areas import build_areas
 from .classify import classify_all
 from .tiles import build_tiles
 from .versions import build_versions
@@ -45,7 +46,7 @@ def _existing_classified(directory):
 def main():
     parser = argparse.ArgumentParser(prog="python -m pipeline", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["all", "snapshots", "classify", "versions", "tiles"])
+    parser.add_argument("command", choices=["all", "snapshots", "classify", "versions", "areas", "tiles"])
     source = parser.add_argument_group("input (snapshots, classify, all)")
     source.add_argument("--osh", help="full-history .osh.pbf to cut snapshots from")
     source.add_argument("--start", default="2016-01-01", help="first snapshot date (default 2016-01-01)")
@@ -58,6 +59,8 @@ def main():
     parser.add_argument("--classified-dir", default=DATA / "classified", type=Path)
     parser.add_argument("--threads", type=int, default=2)
     parser.add_argument("--force", action="store_true", help="reclassify even if results exist")
+    parser.add_argument("--boundaries-pbf", type=Path,
+                        help="snapshot to take Bezirk/Ortsteil boundaries from (default: newest in --snapshot-dir)")
     parser.add_argument("--minzoom", type=int, default=9)
     parser.add_argument("--maxzoom", type=int, default=14)
     args = parser.parse_args()
@@ -65,6 +68,8 @@ def main():
     versions_path = DATA / f"{args.slug}_versions.parquet"
     timeline_path = SITE / "data" / f"{args.slug}_timeline.json"
     tiles_path = SITE / "tiles" / f"{args.slug}.pmtiles"
+    areas_json = SITE / "data" / f"{args.slug}_areas.json"
+    areas_geojson = SITE / "data" / f"{args.slug}_areas.geojson"
 
     started = time.time()
     if args.command in ("all", "snapshots", "classify"):
@@ -84,6 +89,14 @@ def main():
         build_versions(classified or _existing_classified(args.classified_dir),
                        versions_path, timeline_path, region=args.region)
         if args.command == "versions":
+            return
+
+    if args.command in ("all", "areas"):
+        print("[areas]", flush=True)
+        boundaries = args.boundaries_pbf or max(
+            Path(args.snapshot_dir).glob("*.osm.pbf"), key=snaps.date_from_filename)
+        build_areas(boundaries, versions_path, timeline_path, areas_json, areas_geojson)
+        if args.command == "areas":
             return
 
     print("[tiles]", flush=True)

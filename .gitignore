@@ -8,6 +8,8 @@
 # main, so the repository does not grow by a tileset on every rebuild.
 site/tiles/*.pmtiles
 site/data/*_timeline.json
+site/data/*_areas.json
+site/data/*_areas.geojson
 
 # Pinned external tools (scripts/fetch_osmnexus.sh)
 .tools/

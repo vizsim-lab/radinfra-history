@@ -44,7 +44,7 @@ function el(name, attrs = {}, parent = null) {
 
 // 1, 2 or 5 times a power of ten, so the axis reads 0 / 500 / 1.000 and not 0 / 437 / 874.
 function niceStep(max, ticks) {
-    const raw = max / ticks;
+    const raw = Math.max(max / ticks, 1e-6);
     const power = 10 ** Math.floor(Math.log10(raw));
     for (const f of [1, 2, 5, 10]) {
         if (f * power >= raw) return f * power;
@@ -52,7 +52,8 @@ function niceStep(max, ticks) {
     return 10 * power;
 }
 
-export function createTimeline(container, { snapshots, values, label, onChange }) {
+export function createTimeline(container, { snapshots, values: initialValues, label, onChange }) {
+    let values = initialValues;
     const times = snapshots.map((s) => parseDate(s.date).getTime());
     const t0 = times[0];
     const t1 = times[times.length - 1];
@@ -78,11 +79,17 @@ export function createTimeline(container, { snapshots, values, label, onChange }
     // lot, so the y range is fitted to the data (clean ticks, labelled) rather than
     // starting at zero — a flat line at the top of the box would say nothing. With
     // no zero baseline there is deliberately no area fill, which would read as size.
-    const lo = Math.min(...values);
-    const hi = Math.max(...values);
-    const step = niceStep(Math.max(hi - lo, hi * 0.02, 1), 2);
-    const yMin = Math.max(0, Math.floor(lo / step) * step);
-    const yMax = Math.max(yMin + step, Math.ceil(hi / step) * step);
+    let step;
+    let yMin;
+    let yMax;
+    function fitScale() {
+        const lo = Math.min(...values);
+        const hi = Math.max(...values);
+        step = niceStep(Math.max(hi - lo, hi * 0.02, 0.1), 2);
+        yMin = Math.max(0, Math.floor(lo / step) * step);
+        yMax = Math.max(yMin + step, Math.ceil(hi / step) * step);
+    }
+    fitScale();
     const y = (v) => MARGIN.top + PLOT_HEIGHT - ((v - yMin) / (yMax - yMin)) * PLOT_HEIGHT;
 
     function nearest(px) {
@@ -108,11 +115,13 @@ export function createTimeline(container, { snapshots, values, label, onChange }
 
         // Recessive grid: hairlines at clean values, labelled in muted ink.
         const grid = el('g', { class: 'tl-grid' }, svg);
-        for (let v = yMin; v <= yMax + 1e-9; v += step) {
+        const digits = step < 1 ? 1 : 0;
+        for (let i = 0, v = yMin; v <= yMax + step * 1e-6; i += 1, v = yMin + i * step) {
             el('line', { x1: MARGIN.left, x2: width - MARGIN.right, y1: y(v), y2: y(v) }, grid);
             const text = el('text', { x: MARGIN.left - 6, y: y(v), 'dominant-baseline': 'middle', 'text-anchor': 'end' }, grid);
             // The unit rides on the top tick instead of a separate label.
-            text.textContent = `${v.toLocaleString('de-DE')}${v + step > yMax + 1e-9 ? ' km' : ''}`;
+            const top = v + step > yMax + step * 1e-6;
+            text.textContent = `${v.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits })}${top ? ' km' : ''}`;
         }
 
         // Years along the bottom, at 1 January.
@@ -241,6 +250,14 @@ export function createTimeline(container, { snapshots, values, label, onChange }
     return {
         set,
         get: () => current,
+        // New series for the same snapshots, e.g. when the area changes.
+        setValues(next) {
+            values = next;
+            fitScale();
+            container.setAttribute('aria-valuetext',
+                `${formatDate(snapshots[current].date)}, ${formatKm(values[current])}`);
+            render();
+        },
     };
 }
 
