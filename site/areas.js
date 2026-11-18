@@ -27,7 +27,7 @@ function maskFor(feature) {
     };
 }
 
-export function createAreas(map, { data, geojson, beforeId = undefined, onSelect }) {
+export function createAreas(map, { data, geojson, beforeId = undefined, onSelect, onPicking = () => {} }) {
     const bySlug = new Map(data.areas.map((a) => [a.slug, a]));
     const featureBySlug = new Map(geojson.features.map((f) => [f.properties.slug, f]));
     let current = bySlug.get('berlin') ?? data.areas[0];
@@ -92,6 +92,7 @@ export function createAreas(map, { data, geojson, beforeId = undefined, onSelect
     }
 
     function setPicking(on) {
+        if (on === picking) return;
         picking = on;
         for (const id of [LAYERS.pickFill, LAYERS.pickLine]) {
             map.setLayoutProperty(id, 'visibility', on ? 'visible' : 'none');
@@ -102,7 +103,12 @@ export function createAreas(map, { data, geojson, beforeId = undefined, onSelect
             tooltip.hidden = true;
         }
         document.getElementById('area-pick')?.setAttribute('aria-pressed', String(on));
+        const bar = document.getElementById('pick-bar');
+        if (bar) bar.hidden = !on;
+        onPicking(on);
     }
+
+    document.getElementById('pick-cancel')?.addEventListener('click', () => setPicking(false));
 
     map.on('mousemove', (event) => {
         if (!picking) return;
@@ -152,14 +158,32 @@ export function createAreas(map, { data, geojson, beforeId = undefined, onSelect
     };
 }
 
-// Keep the area clear of the panel and the timeline when zooming to it.
+// Keep the area clear of the panel, the map buttons and the timeline when zooming
+// to it. The panel is a column on the right, or on a phone a band across the top.
 function fitPadding(map) {
     const box = map.getContainer().getBoundingClientRect();
-    const panel = document.querySelector('.panel')?.getBoundingClientRect();
-    const timeline = document.querySelector('.timeline-panel')?.getBoundingClientRect();
+    const rect = (id) => {
+        const r = document.getElementById(id)?.getBoundingClientRect();
+        return r && r.width > 0 && r.height > 0 ? r : null;
+    };
+    const panel = rect('panel');
+    const buttons = rect('bottom-left-ui');
+    const timeline = rect('timeline-panel');
     const pad = { top: 24, right: 24, bottom: 24, left: 24 };
-    if (panel && box.width > 700) pad.left = Math.max(pad.left, panel.right - box.left + 16);
+    if (panel && panel.width < box.width * 0.6) pad.right = Math.max(pad.right, box.right - panel.left + 16);
     else if (panel) pad.top = Math.max(pad.top, panel.bottom - box.top + 16);
+    if (buttons) pad.left = Math.max(pad.left, buttons.right - box.left + 16);
     if (timeline) pad.bottom = Math.max(pad.bottom, box.bottom - timeline.top + 16);
+    // MapLibre cannot fit into less than nothing; leave it at least a strip.
+    const shrink = (a, b, size) => {
+        const over = pad[a] + pad[b] - (size - 80);
+        if (over > 0) {
+            const total = pad[a] + pad[b];
+            pad[a] -= over * (pad[a] / total);
+            pad[b] -= over * (pad[b] / total);
+        }
+    };
+    shrink('left', 'right', box.width);
+    shrink('top', 'bottom', box.height);
     return pad;
 }

@@ -11,9 +11,16 @@
   .accent { fill: #7aa2ff }
 }
 </style>
-<path d="M56.76 172.51A84 84 0 0 0 180.41 193.65" fill="none" stroke="#2dd4bf" stroke-width="38"/>
-<path d="M179.72 194.19A84 84 0 0 0 187.81 69.02" fill="none" stroke="#174ed9" stroke-width="38"/>
-<path d="M188.42 69.65A84 84 0 0 0 63.65 74.01" fill="none" stroke="#7a0ff5" stroke-width="38"/>
-<path d="M33.79 47.53L44.46 119.22L94.47 99.36Z" fill="#7a0ff5"/>
-<path class="ink" d="M128 128L162 128M128 128L128 78" stroke="#1f2937" stroke-width="20" stroke-linecap="round" fill="none"/>
+<path d="M53.83 167.44A84 84 0 0 0 144.89 210.28" fill="none" stroke="#f08ed5" stroke-width="36" stroke-dasharray="31.74 22.22" stroke-dashoffset="-11.11"/>
+<path d="M144.03 210.46A84 84 0 0 0 211.63 135.91" fill="none" stroke="#2dd4bf" stroke-width="36"/>
+<path d="M211.54 136.78A84 84 0 0 0 160.01 50.34" fill="none" stroke="#174ed9" stroke-width="36"/>
+<path d="M160.82 50.68A84 84 0 0 0 63.65 74.01" fill="none" stroke="#7a0ff5" stroke-width="36"/>
+<path d="M34.56 48.2L44.46 119.22L93.69 98.7Z" fill="#7a0ff5" stroke="#7a0ff5" stroke-width="4" stroke-linejoin="round"/>
+<path class="ink" d="M128 128L162 128" stroke="#1f2937" stroke-width="20" stroke-linecap="round" fill="none"/>
+<path class="ink" d="M128 128L128 78" stroke="#1f2937" stroke-width="16" stroke-linecap="round" fill="none"/>
+<circle class="ink-fill" cx="128" cy="128" r="14" fill="#1f2937"/>
+<circle class="paper" cx="128" cy="128" r="5.5" fill="#ffffff"/>
+<circle class="paper ink-stroke" cx="144.03" cy="210.46" r="11" fill="#ffffff" stroke="#1f2937" stroke-width="4.5"/>
+<circle class="paper ink-stroke" cx="211.54" cy="136.78" r="11" fill="#ffffff" stroke="#1f2937" stroke-width="4.5"/>
+<circle class="paper ink-stroke" cx="160.82" cy="50.68" r="11" fill="#ffffff" stroke="#1f2937" stroke-width="4.5"/>
 </svg>

@@ -1,4 +1,5 @@
-"""Draw the radinfra-history logo: site/logo.svg, site/logo-wordmark.svg, site/favicon.svg.
+"""Draw the radinfra-history logo: site/logo.svg, site/logo-wordmark.svg, site/favicon.svg,
+and site/logo-wordmark-light.svg, which has no dark variant, for the page's panel.
 
 The mark is a bicycle wheel that is also a clock ("Rad" in German is both wheel
 and bike). Its rim runs counter-clockwise like a history/rewind arrow and is drawn
@@ -78,22 +79,47 @@ HEAD_COLOUR = PURPLE
 
 
 def favicon():
-    """A bolder mark for 16–48 px: thick rim in three solid colours, no spokes or
-    vertices, which would turn to mush at that size."""
-    r, w = 84.0, 38.0
-    tail, head = 212.0, 500.0
-    colours = [TEAL, BLUE, PURPLE]
+    """The mark redrawn for 16–48 px: a bolder rim in four colours with the dashed
+    start, the vertices between the colours, and the clock hands. No spokes, which
+    turn to mush at that size."""
+    r, w = 84.0, 36.0
+    tail, head = 208.0, 500.0
+    colours = [PINK, TEAL, BLUE, PURPLE]
     span = (head - tail) / len(colours)
-    parts = [f'<path d="{arc(tail + i * span, tail + (i + 1) * span + (0.6 if i < 2 else 0), r)}" '
-             f'fill="none" stroke="{c}" stroke-width="{f(w)}"/>' for i, c in enumerate(colours)]
-    bx_out, by_out = pt(head - 0.5, r + w * 1.05)
-    bx_in, by_in = pt(head - 0.5, r - w * 1.05)
+    parts = []
+    for i, colour in enumerate(colours):
+        a0 = tail + i * span
+        # A hair of overlap where two colours meet, against anti-aliasing seams.
+        a1 = a0 + span + (0.6 if i < len(colours) - 1 else 0)
+        dash = ""
+        if i == 0:
+            # Two dashes: at 16 px more would blur into a solid line.
+            length = math.radians(a1 - a0) * r
+            on = length / (2 * 1.7)
+            off = (length - 2 * on) / 2
+            dash = f' stroke-dasharray="{f(on)} {f(off)}" stroke-dashoffset="{f(-off / 2)}"'
+        parts.append(f'<path d="{arc(a0, a1, r)}" fill="none" stroke="{colour}" stroke-width="{f(w)}"{dash}/>')
+
+    bx_out, by_out = pt(head - 0.5, r + w * 1.08)
+    bx_in, by_in = pt(head - 0.5, r - w * 1.08)
     tx, ty = pt(head + 34, r)
-    parts.append(f'<path d="M{f(bx_out)} {f(by_out)}L{f(tx)} {f(ty)}L{f(bx_in)} {f(by_in)}Z" fill="{HEAD_COLOUR}"/>')
+    parts.append(f'<path d="M{f(bx_out)} {f(by_out)}L{f(tx)} {f(ty)}L{f(bx_in)} {f(by_in)}Z" '
+                 f'fill="{HEAD_COLOUR}" stroke="{HEAD_COLOUR}" stroke-width="4" stroke-linejoin="round"/>')
+
     hx, hy = pt(0, 34)
     mx, my = pt(90, 50)
-    parts.append(f'<path class="ink" d="M{f(C)} {f(C)}L{f(hx)} {f(hy)}M{f(C)} {f(C)}L{f(mx)} {f(my)}" '
-                 f'stroke="{INK}" stroke-width="20" stroke-linecap="round" fill="none"/>')
+    parts.append(f'<path class="ink" d="M{f(C)} {f(C)}L{f(hx)} {f(hy)}" stroke="{INK}" '
+                 f'stroke-width="20" stroke-linecap="round" fill="none"/>')
+    parts.append(f'<path class="ink" d="M{f(C)} {f(C)}L{f(mx)} {f(my)}" stroke="{INK}" '
+                 f'stroke-width="16" stroke-linecap="round" fill="none"/>')
+    parts.append(f'<circle class="ink-fill" cx="{f(C)}" cy="{f(C)}" r="14" fill="{INK}"/>')
+    parts.append(f'<circle class="paper" cx="{f(C)}" cy="{f(C)}" r="5.5" fill="#ffffff"/>')
+
+    # Vertices only where the colours meet; one at the tail as well is too busy.
+    for i in range(1, len(colours)):
+        x, y = pt(tail + i * span, r)
+        parts.append(f'<circle class="paper ink-stroke" cx="{f(x)}" cy="{f(y)}" r="11" '
+                     f'fill="#ffffff" stroke="{INK}" stroke-width="4.5"/>')
     return parts
 
 
@@ -177,11 +203,14 @@ def text_path(text, font_file, size, x, baseline, tracking=0.0):
     return pen.getCommands(), cursor - tracking
 
 
-def svg(width, height, body, title, viewbox=None):
+def svg(width, height, body, title, viewbox=None, dark=True):
+    """dark=False for the page's own panel, which stays light in dark mode: there
+    the dark variant would put light ink on a white panel."""
     viewbox = viewbox or f"0 0 {f(width)} {f(height)}"
+    style = f"{DARK_CSS}\n" if dark else ""
     return (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="{viewbox}" '
             f'width="{f(width)}" height="{f(height)}" role="img" aria-label="{title}">\n'
-            f'<title>{title}</title>\n{DARK_CSS}\n{body}\n</svg>\n')
+            f'<title>{title}</title>\n{style}{body}\n</svg>\n')
 
 
 def main():
@@ -206,7 +235,8 @@ def main():
         f'\n<path class="accent" d="{d2}" fill="{BLUE}"/>'
     )
     (SITE / "logo-wordmark.svg").write_text(svg(width, height, body, title), encoding="utf-8")
-    for name in ("logo.svg", "favicon.svg", "logo-wordmark.svg"):
+    (SITE / "logo-wordmark-light.svg").write_text(svg(width, height, body, title, dark=False), encoding="utf-8")
+    for name in ("logo.svg", "favicon.svg", "logo-wordmark.svg", "logo-wordmark-light.svg"):
         print(f"{SITE / name}: {(SITE / name).stat().st_size:,} bytes")
 
 

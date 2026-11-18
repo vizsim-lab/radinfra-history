@@ -3,9 +3,10 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Radinfrastruktur Berlin im Zeitverlauf — OSM-Historie, klassifiziert wie radinfra.de</title>
-    <meta name="description" content="Wie sich die in OpenStreetMap erfasste Radinfrastruktur in Berlin seit 2020 entwickelt hat, klassifiziert wie radinfra.de." />
+    <title>radinfra history — Radinfrastruktur Berlin im Zeitverlauf</title>
+    <meta name="description" content="Wie sich die in OpenStreetMap erfasste Radinfrastruktur in Berlin seit 2016 entwickelt hat, klassifiziert wie radinfra.de." />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin />
     <link href="https://unpkg.com/maplibre-gl@5.24.0/dist/maplibre-gl.css" rel="stylesheet" />
     <link href="style.css" rel="stylesheet" />
 </head>
@@ -19,52 +20,94 @@
 
     <div id="fatal" class="fatal" role="alert" hidden></div>
 
-    <div class="panel">
-        <div class="legend">
-            <div class="legend-header">
-                <img class="panel-logo" src="logo.svg" alt="" width="36" height="36" />
-                <div class="legend-header__text">
-                    <h3>Radinfrastruktur Berlin im Zeitverlauf</h3>
-                    <p class="panel-sub">
-                        OSM-Datenstand vom <span id="range-start">…</span> bis
-                        <span id="range-end">…</span>, klassifiziert wie bei radinfra.de.
-                    </p>
-                </div>
-                <button type="button" id="panel-toggle" class="panel-toggle"
-                        aria-expanded="true" aria-controls="panel-body"
-                        aria-label="Panel einklappen" title="Panel einklappen"></button>
-            </div>
+    <!-- While an Ortsteil is picked on the map (areas.js). -->
+    <div id="pick-bar" class="pick-bar" role="status" hidden>
+        <p class="pick-hint">Ortsteil auf der Karte anklicken.<span class="pick-hint__key"> <kbd>Esc</kbd> bricht ab.</span></p>
+        <button type="button" id="pick-cancel" class="btn">Abbrechen</button>
+    </div>
 
-            <div id="panel-body" class="panel-body">
-                <div class="area-picker">
-                    <label for="area-select" class="legend-columns legend-columns--section">Gebiet</label>
+    <!-- Panel, look and structure after vizsim/unfallkarte: sticky title, sections
+         that fold, a footer row with status and links. -->
+    <aside id="panel" class="legend" aria-label="Legende und Auswertung">
+        <!-- On a phone the panel starts folded; set while parsing, before the first paint. -->
+        <script>if (matchMedia('(max-width: 640px)').matches) document.currentScript.parentElement.classList.add('collapsed');</script>
+
+        <div class="legend-title" data-toggle="root">
+            <div class="grow">
+                <h1 class="legend-heading">
+                    <img src="logo-wordmark-light.svg" alt="radinfra history" width="186" height="40" />
+                </h1>
+                <div class="legend-subtext">
+                    Radinfrastruktur Berlin in OpenStreetMap<br />
+                    vom <span id="range-start">…</span> bis <span id="range-end">…</span>
+                    <span class="info-icon" tabindex="0" data-tip="Klassifiziert wie bei radinfra.de (tilda-geo von FixMyCity), nachgerechnet mit OSMnexus. Keine Veröffentlichung von radinfra.de. Daten © OpenStreetMap-Mitwirkende, ODbL.">i</span>
+                </div>
+            </div>
+            <button type="button" id="panel-toggle" class="toggle-arrow toggle-root open"
+                    aria-expanded="true" aria-controls="panel" aria-label="Panel einklappen"></button>
+        </div>
+
+        <div class="legend-body">
+            <section class="legend-section" data-section="area">
+                <div class="legend-section-title">
+                    <span>Gebiet</span>
+                    <button type="button" class="toggle-arrow section-arrow open" aria-expanded="true"
+                            aria-label="Gebiet auf-/zuklappen"></button>
+                </div>
+                <div class="legend-section-content">
                     <div class="area-row">
-                        <select id="area-select"></select>
-                        <button type="button" id="area-pick" class="area-pick" aria-pressed="false"
+                        <select id="area-select" aria-label="Gebiet"></select>
+                        <button type="button" id="area-pick" class="btn btn--icon" aria-pressed="false"
                                 title="Ortsteil auf der Karte anklicken">
                             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3" /><circle cx="8" cy="8" r="3.5" /></svg>
                             <span>Auf der Karte</span>
                         </button>
                     </div>
-                    <p id="area-info" class="legend-note legend-note--tight"></p>
+                    <p id="area-info" class="legend-meta"></p>
                 </div>
+            </section>
 
-                <div class="legend-columns" aria-hidden="true">
-                    <span>Führungsform</span>
-                    <span>km am <span id="legend-date">…</span></span>
+            <section class="legend-section" data-section="categories">
+                <div class="legend-section-title">
+                    <label class="row">
+                        <input type="checkbox" id="legend-all" class="section-checkbox" checked />
+                        Führungsform
+                    </label>
+                    <button type="button" class="toggle-arrow section-arrow open" aria-expanded="true"
+                            aria-label="Führungsformen auf-/zuklappen"></button>
                 </div>
-                <div id="legend-items" class="legend-list"></div>
-                <p class="legend-hint">Auf eine Kategorie klicken, um sie aus- und einzublenden. Linien
-                    lassen sich ab Zoomstufe 12 anklicken.</p>
-
-                <div class="legend-section">
-                    <div class="legend-columns legend-columns--section" aria-hidden="true">
-                        <span>Veränderung</span>
+                <div class="legend-section-content">
+                    <div class="legend-columns" aria-hidden="true">
+                        <span class="legend-columns__date">am <span id="legend-date">…</span></span>
+                        <span class="legend-columns__spark">Verlauf</span>
+                        <span class="legend-columns__km">km</span>
                     </div>
+                    <div id="legend-items" class="legend-items"></div>
+                    <p class="legend-hint">
+                        Ab <a href="#" class="zoom-link" data-zoom="12">Zoomstufe 12</a> zeigt ein Klick
+                        auf eine Linie, seit wann sie so in OSM steht.
+                        <span class="info-icon" tabindex="0" data-tip="Jede Straßenseite ist eine eigene, zur Seite versetzte Linie und zählt eigene Kilometer. Eigenständige Wege liegen mittig.">i</span>
+                    </p>
+                </div>
+            </section>
+
+            <section class="legend-section" data-section="changes">
+                <div class="legend-section-title">
+                    <span>Veränderung</span>
+                    <button type="button" class="toggle-arrow section-arrow open" aria-expanded="true"
+                            aria-label="Veränderung auf-/zuklappen"></button>
+                </div>
+                <div class="legend-section-content">
+                    <p class="legend-disclaimer">
+                        <strong>OSM-Stand, nicht Baustand.</strong> Gezählt wird, was in OpenStreetMap
+                        eingetragen war; Kartieraktionen erscheinen als Sprünge. Ältere Tagging-Schemata
+                        landen öfter in „Führungsform unklar“.
+                    </p>
                     <p class="change-range">
                         <label for="change-from">von</label>
                         <select id="change-from"></select>
-                        bis <strong id="change-to">…</strong> <span class="change-range__hint">(Zeitleiste)</span>
+                        bis <strong id="change-to">…</strong>
+                        <span class="change-range__hint">(Zeitleiste)</span>
                     </p>
                     <table id="change-table" class="change-table">
                         <thead></thead>
@@ -72,61 +115,96 @@
                         <tfoot></tfoot>
                     </table>
                 </div>
+            </section>
 
-                <p class="legend-note">
-                    Jede Straßenseite ist eine eigene, zur Seite versetzte Linie und zählt
-                    eigene Kilometer. Eigenständige Wege liegen mittig. Klick auf eine Linie
-                    zeigt, seit wann sie so in OSM steht.
-                </p>
-
-                <div class="legend-section">
-                    <div class="legend-columns legend-columns--section" aria-hidden="true">
-                        <span>Hintergrund</span>
-                    </div>
-                    <div class="segmented" role="radiogroup" aria-label="Hintergrund">
-                        <button type="button" role="radio" aria-checked="true" data-basemap="map">Karte</button>
-                        <button type="button" role="radio" aria-checked="false" data-basemap="aerial">Luftbild Berlin</button>
-                    </div>
-                    <p id="aerial-note" class="legend-note legend-note--tight" aria-live="polite" hidden></p>
+            <section class="legend-section collapsed" data-section="about">
+                <div class="legend-section-title">
+                    <span>Über die Karte</span>
+                    <button type="button" class="toggle-arrow section-arrow" aria-expanded="false"
+                            aria-label="Über die Karte auf-/zuklappen"></button>
                 </div>
+                <div class="legend-section-content legend-prose">
+                    <p>
+                        Jeder Stand ist ein Schnitt durch die OSM-Historie, je zum Quartalsbeginn und
+                        zuletzt zum Ende der Daten, bewertet mit der heutigen Klassifikation nach
+                        <a href="https://radinfra.de" target="_blank" rel="noopener">radinfra.de</a>
+                        (<a href="https://github.com/FixMyBerlin/tilda-geo" target="_blank" rel="noopener">tilda-geo</a>
+                        von FixMyCity), nachgerechnet mit
+                        <a href="https://github.com/rush42/OSMnexus" target="_blank" rel="noopener">OSMnexus</a>.
+                        Diese Karte ist keine Veröffentlichung von radinfra.de.
+                    </p>
+                    <p>
+                        Das Luftbild (Geoportal Berlin) folgt der Zeitleiste: Zu jedem Stand erscheint das
+                        jüngste Bild davor, also das, was Mapper damals sehen konnten.
+                    </p>
+                    <p>
+                        Daten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap-Mitwirkende</a> (ODbL).
+                    </p>
+                </div>
+            </section>
+        </div>
 
-                <p class="legend-note legend-note--muted">
-                    <strong>Die Karte zeigt, was in OpenStreetMap eingetragen war, nicht was
-                    gebaut war.</strong> Kartieraktionen erscheinen als Sprünge. Alle Stände
-                    sind mit der heutigen Klassifikation bewertet; ältere Tagging-Schemata
-                    landen deshalb öfter in „Führungsform unklar“.
-                </p>
-
-                <p class="legend-note">
-                    Klassifikation nach <a href="https://radinfra.de" target="_blank" rel="noopener">radinfra.de</a>
-                    (<a href="https://github.com/FixMyBerlin/tilda-geo" target="_blank" rel="noopener">tilda-geo</a>
-                    von FixMyCity), nachgerechnet mit
-                    <a href="https://github.com/rush42/OSMnexus" target="_blank" rel="noopener">OSMnexus</a>.
-                    Diese Karte ist keine Veröffentlichung von radinfra.de.
-                    Daten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap-Mitwirkende</a> (ODbL).
-                </p>
-
-                <p class="legend-footer">
-                    Quellcode dieser Karte:
-                    <a href="https://github.com/vizsim-lab/radinfra-history" target="_blank" rel="noopener">
-                        <!-- GitHub mark, Octicons (MIT). -->
-                        <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
-                            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38
-                                0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01
-                                1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95
-                                0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18
-                                1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08
-                                2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0
-                                1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
-                        </svg>
-                        <span>vizsim-lab/radinfra-history</span>
-                    </a>
-                </p>
+        <div class="legend-footer">
+            <div class="fc-stats">
+                <span class="fc-stat" id="fc-snapshots-chip" tabindex="0" data-tip="Vierteljährliche Stände aus der OSM-Historie">
+                    <!-- Octicons clock (MIT) -->
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm7-3.25v2.992l2.028.812a.75.75 0 0 1-.557 1.392l-2.5-1A.751.751 0 0 1 7 8.25v-3.5a.75.75 0 0 1 1.5 0Z" /></svg>
+                    <span id="fc-snapshots">…</span>
+                </span>
+                <span class="fc-stat" tabindex="0" data-tip="Zoomstufe · Linien lassen sich ab Zoomstufe 12 anklicken">
+                    <!-- Octicons search (MIT) -->
+                    <svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z" /></svg>
+                    <span id="fc-zoom">…</span>
+                </span>
+            </div>
+            <div class="fc-links">
+                <span class="fc-badge" tabindex="0" data-tip="Beta: Daten und Funktionen können sich noch ändern">Beta</span>
+                <a href="https://github.com/vizsim-lab/radinfra-history" target="_blank" rel="noopener"
+                   title="Quellcode auf GitHub (vizsim-lab/radinfra-history)" aria-label="Quellcode auf GitHub">
+                    <!-- Octicons mark-github (MIT) -->
+                    <svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z" /></svg>
+                </a>
+                <a href="https://github.com/vizsim-lab/radinfra-history/issues" target="_blank" rel="noopener"
+                   title="Fehler melden / Feedback (GitHub Issues)" aria-label="GitHub Issues">
+                    <!-- Octicons issue-opened (MIT) -->
+                    <svg viewBox="0 0 16 16" width="20" height="20" fill="currentColor" aria-hidden="true"><path d="M8 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" /><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z" /></svg>
+                </a>
             </div>
         </div>
+    </aside>
+
+    <!-- Bottom left, as in vizsim/unfallkarte: zoom buttons as tiles, and below them the
+         button for the background panel. -->
+    <div id="bottom-left-ui" class="bottom-left-ui">
+        <div id="custom-nav-control"></div>
     </div>
 
-    <div class="timeline-panel">
+    <button type="button" id="map-settings-toggle" class="map-settings-toggle"
+            aria-expanded="false" aria-controls="map-settings-panel" title="Hintergrund wählen">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <polygon points="1 6 8 3 16 6 23 3 23 18 16 21 8 18 1 21 1 6"></polygon>
+            <line x1="8" y1="3" x2="8" y2="18"></line><line x1="16" y1="6" x2="16" y2="21"></line>
+        </svg>
+    </button>
+
+    <section id="map-settings-panel" class="map-settings-panel is-collapsed" aria-label="Hintergrund">
+        <div class="map-settings-title">Hintergrund</div>
+        <div class="basemap-grid" role="radiogroup" aria-label="Hintergrund">
+            <button type="button" class="basemap-btn selected" role="radio" aria-checked="true" data-basemap="map">
+                <span class="basemap-preview basemap-preview-map"></span>
+                <span class="basemap-label">Karte</span>
+            </button>
+            <button type="button" class="basemap-btn" role="radio" aria-checked="false" data-basemap="aerial">
+                <span class="basemap-preview basemap-preview-aerial"></span>
+                <span class="basemap-label">Luftbild Berlin</span>
+            </button>
+        </div>
+        <p id="aerial-note" class="map-settings-note" aria-live="polite">
+            Das Luftbild folgt der Zeitleiste: zu jedem Stand das jüngste Bild davor.
+        </p>
+    </section>
+
+    <div id="timeline-panel" class="timeline-panel">
         <div class="tl-head">
             <div class="tl-buttons">
                 <button type="button" id="tl-prev" class="tl-btn" aria-label="Ein Stand zurück" title="Ein Stand zurück">
@@ -141,9 +219,13 @@
                 </button>
             </div>
             <div class="tl-readout">
-                <span class="tl-readout__label"><span class="tl-long">OSM-</span>Datenstand</span>
+                <span class="tl-readout__label">
+                    <span class="tl-long">OSM-</span>Datenstand
+                    <span class="info-icon" tabindex="0" data-tip="Was zu diesem Datum in OpenStreetMap eingetragen war, nicht was gebaut war.">i</span>
+                </span>
                 <strong id="tl-date">…</strong>
             </div>
+            <span id="tl-aerial" class="tl-chip" tabindex="0" hidden></span>
             <div class="tl-readout tl-readout--right">
                 <span class="tl-readout__label"><span class="tl-long" id="tl-scope">Berlin </span>gesamt</span>
                 <strong id="tl-total">…</strong>

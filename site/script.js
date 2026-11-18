@@ -30,15 +30,29 @@ import { createImagery } from './imagery.js';
 import {
     bindBasemapSwitch,
     bindLoadingIndicator,
-    bindPanelToggle,
     buildLegend,
     createTable,
     describeArea,
     fillAreaSelect,
     fillChangeFrom,
     renderChanges,
+    swatch,
 } from './panel.js';
 import { createTimeline, formatDate, formatKm, formatShortDate } from './timeline.js';
+import {
+    MOBILE_QUERY,
+    addNavigation,
+    bindFooter,
+    bindZoomLinks,
+    foldAttributionOnPhone,
+    isPanelCollapsed,
+    setPanelCollapsed,
+    setupMapSettings,
+    setupPanel,
+    setupTooltips,
+    trackCornerHeight,
+    trackTimelineHeight,
+} from './ui.js';
 
 const HIT_PADDING = 6;
 const OPEN_END = 99991231;
@@ -219,83 +233,81 @@ function featureBounds(geometry) {
 const SIDE_LABELS = { l: 'linke Straßenseite', r: 'rechte Straßenseite', s: 'eigener Weg' };
 
 // Built with DOM nodes and textContent: names and ids come from OSM data.
+//
+// The dates are those of the category, not of the version under the pointer: a
+// moved node or a new name makes a new version, but the infrastructure stays what
+// it was, so the popup says since when the line has had this category (cf) and
+// until when (ct), and what came before (pc) and after (nc).
 function popupContent(props, { groupOf, snapshots, radinfraHref }) {
     const keys = snapshots.map((s) => s.key);
-    const f = Number(props.f);
-    const t = Number(props.t);
-    const fIndex = keys.indexOf(f);
-    const tIndex = t === OPEN_END ? -1 : keys.indexOf(t);
+    const cf = Number(props.cf ?? props.f);
+    const ct = Number(props.ct ?? props.t);
+    const from = keys.indexOf(cf);
+    const until = ct === OPEN_END ? -1 : keys.indexOf(ct);
+    const between = (i) => `zwischen ${formatShortDate(snapshots[i - 1].date)} und ${formatShortDate(snapshots[i].date)}`;
 
-    const root = document.createElement('div');
-    const title = document.createElement('h4');
-    title.textContent = props.name || 'ohne Namen';
-    root.appendChild(title);
-
-    const table = document.createElement('table');
-    const addRow = (label, ...nodes) => {
-        const tr = document.createElement('tr');
-        const th = document.createElement('th');
-        th.textContent = label;
-        const td = document.createElement('td');
-        td.append(...nodes);
-        tr.append(th, td);
-        table.appendChild(tr);
+    const node = (tag, cls, text) => {
+        const n = document.createElement(tag);
+        if (cls) n.className = cls;
+        if (text !== undefined) n.textContent = text;
+        return n;
     };
-    const text = (value) => document.createTextNode(value);
-    const code = (value) => {
-        const node = document.createElement('code');
-        node.textContent = value;
-        return node;
-    };
-    const hint = (value) => {
-        const node = document.createElement('span');
-        node.className = 'popup-hint';
-        node.textContent = value;
-        return node;
-    };
+    const card = node('div', 'pop-card');
+    card.append(node('div', 'pop-eyebrow', `Radinfrastruktur · ${SIDE_LABELS[props.side] ?? 'OSM'}`));
+    card.append(node('div', 'pop-title', props.name || 'ohne Namen'));
 
     const group = groupOf.get(props.category);
-    addRow('Führungsform', text(group ? group.label : '–'), document.createElement('br'), code(props.category ?? '–'));
-    addRow('Lage', text(SIDE_LABELS[props.side] ?? '–'));
+    const cat = node('div', 'pop-cat');
+    if (group) cat.append(swatch(group.color, group.dash));
+    cat.append(node('span', null, group ? group.label : (props.category ?? '–')));
+    if (props.category) cat.append(node('span', 'pop-code', props.category));
+    card.append(cat);
 
-    let since;
-    if (fIndex <= 0) {
-        since = hint(`schon im ersten Stand (${formatShortDate(snapshots[0].date)}) enthalten`);
+    // Neighbours in the same legend row differ only in the category itself.
+    const labelOf = (category) => {
+        const g = groupOf.get(category);
+        if (!g) return category;
+        return g === group ? `${g.label} (${category})` : g.label;
+    };
+    const table = node('table', 'pop-table');
+    const row = (label, value, meta) => {
+        const tr = node('tr');
+        const td = node('td');
+        td.append(document.createTextNode(value));
+        if (meta) td.append(node('span', 'pop-meta', meta));
+        tr.append(node('td', null, label), td);
+        table.append(tr);
+    };
+    if (from <= 0) {
+        row('Seit', `spätestens ${formatDate(snapshots[0].date)}`, 'schon im ersten Stand dieser Karte');
     } else {
-        since = hint(`erfasst oder geändert zwischen ${formatShortDate(snapshots[fIndex - 1].date)} `
-            + `und ${formatShortDate(snapshots[fIndex].date)}`);
+        row('Seit', formatDate(keyToIso(cf)), `eingetragen ${between(from)}`);
+        row('Vorher', props.pc ? labelOf(props.pc) : 'nicht unter dieser Way-ID erfasst');
     }
-    addRow('In OSM seit', text(formatDate(keyToIso(f))), since);
-
-    if (t === OPEN_END) {
-        addRow('Bis', text(`heute (Stand ${formatShortDate(snapshots[snapshots.length - 1].date)})`));
+    if (ct === OPEN_END) {
+        row('Bis', `heute (Stand ${formatShortDate(snapshots[snapshots.length - 1].date)})`);
     } else {
-        const until = tIndex > 0
-            ? hint(`geändert oder entfernt zwischen ${formatShortDate(snapshots[tIndex - 1].date)} `
-                + `und ${formatShortDate(snapshots[tIndex].date)}`)
-            : text('');
-        addRow('Bis', text(`vor ${formatDate(keyToIso(t))}`), until);
+        row('Bis', formatDate(keyToIso(ct)), until > 0 ? `geändert ${between(until)}` : null);
+        row('Danach', props.nc ? labelOf(props.nc) : 'nicht mehr unter dieser Way-ID erfasst');
     }
-    root.appendChild(table);
+    card.append(table);
 
-    const links = document.createElement('p');
-    links.className = 'popup-links';
+    const foot = node('div', 'pop-foot');
     const link = (href, label) => {
-        const a = document.createElement('a');
+        const a = node('a', null, label);
         a.href = href;
         a.target = '_blank';
         a.rel = 'noopener';
-        a.textContent = label;
-        links.append(a, document.createElement('br'));
+        foot.append(a);
     };
     const wayId = osmWayId(props.id);
     if (wayId) {
-        link(`https://www.openstreetmap.org/way/${wayId}`, `Way ${wayId} auf openstreetmap.org`);
-        link(DEEP_HISTORY_URL(wayId), 'Versionsgeschichte (OSM Deep History)');
+        link(`https://www.openstreetmap.org/way/${wayId}`, `OSM-Way ${wayId}`);
+        link(DEEP_HISTORY_URL(wayId), 'Versionsgeschichte');
     }
-    if (radinfraHref) link(radinfraHref, 'Heutiger Stand bei radinfra.de');
-    root.appendChild(links);
-    return root;
+    if (radinfraHref) link(radinfraHref, 'radinfra.de heute');
+    if (foot.childElementCount) card.append(foot);
+    return card;
 }
 
 function initialIndex(snapshots) {
@@ -338,9 +350,14 @@ function areaScope(area, groups, snapshots) {
 }
 
 async function main() {
-    bindPanelToggle();
+    setupTooltips();
+    setupPanel();
+    setupMapSettings();
+    trackTimelineHeight();
 
-    const protocol = new pmtiles.Protocol();
+    // With metadata, the protocol hands MapLibre the archive's full TileJSON,
+    // attribution included; without it the tiles' credit never reached the map.
+    const protocol = new pmtiles.Protocol({ metadata: true });
     maplibregl.addProtocol('pmtiles', protocol.tile);
 
     const [timeline, style, imageryList, areasData, areasGeojson] = await Promise.all([
@@ -369,11 +386,22 @@ async function main() {
         minZoom: initialMapConfig.minZoom,
         maxZoom: initialMapConfig.maxZoom,
         hash: true,
+        attributionControl: false,
     });
     window.historyMap = map;
     bindLoadingIndicator(map);
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-    map.addControl(new maplibregl.ScaleControl({ maxWidth: 120 }));
+    addNavigation(map);
+    bindZoomLinks(map);
+    bindFooter(map, snapshots);
+    // Bottom right, under the panel: the attribution starts open and folds to its
+    // ⓘ once the map is dragged; the scale bar sits above it.
+    map.addControl(new maplibregl.AttributionControl({
+        compact: true,
+        customAttribution: '<a href="https://maplibre.org/" target="_blank">MapLibre</a>',
+    }), 'bottom-right');
+    map.addControl(new maplibregl.ScaleControl({ maxWidth: 100 }), 'bottom-right');
+    trackCornerHeight(map);
+    foldAttributionOnPhone(map);
 
     let index = initialIndex(snapshots);
 
@@ -412,7 +440,7 @@ async function main() {
             beforeId: HOVER_LAYER_ID,
             isOwnLayer: (id) => id === HOVER_LAYER_ID || id.startsWith(LAYER_PREFIX) || id.startsWith('area-'),
         }) : null;
-        const describeImagery = bindBasemapSwitch(imagery, () => snapshots[index].date);
+        const describeImagery = bindBasemapSwitch(imagery, () => snapshots[index].date, imageryList?.variants);
 
         const legend = buildLegend(groups, snapshots, (groupId, visible) => {
             const group = groups.find((g) => g.id === groupId);
@@ -477,6 +505,9 @@ async function main() {
 
         changeFrom = fillChangeFrom(snapshots, updateChanges);
 
+        // On a phone the unfolded panel covers the map, so it folds while an
+        // Ortsteil is picked and comes back as it was afterwards.
+        let reopenPanel = false;
         const areas = areasData && areasGeojson ? createAreas(map, {
             data: areasData,
             geojson: areasGeojson,
@@ -484,6 +515,16 @@ async function main() {
                 setSelectValue(area.slug);
                 describeArea(area, areas);
                 setScope(areaScope(area, groups, snapshots));
+            },
+            onPicking: (on) => {
+                document.body.classList.toggle('is-picking', on);
+                if (on) {
+                    reopenPanel = window.matchMedia(MOBILE_QUERY).matches && !isPanelCollapsed();
+                    if (reopenPanel) setPanelCollapsed(true);
+                } else if (reopenPanel) {
+                    reopenPanel = false;
+                    setPanelCollapsed(false);
+                }
             },
         }) : null;
         const setSelectValue = areas ? fillAreaSelect(areas, (slug) => areas.select(slug, { fit: slug !== 'berlin' }))
@@ -494,7 +535,7 @@ async function main() {
             areas.select(new URLSearchParams(window.location.search).get('area') ?? 'berlin',
                 { fit: Boolean(new URLSearchParams(window.location.search).get('area')) });
         } else {
-            document.querySelector('.area-picker').hidden = true;
+            document.querySelector('.legend-section[data-section="area"]').hidden = true;
             setScope(scope);
         }
 
@@ -554,7 +595,7 @@ async function main() {
         // Hover and click query the drawn history layers, so a hidden category or
         // a version not valid at the selected date can never be hit. While an
         // area is being picked on the map, lines are left alone.
-        const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '340px' });
+        const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '320px' });
         const query = (point) => {
             const layers = historyIds.filter((id) => map.getLayer(id));
             return layers.length ? map.queryRenderedFeatures(hitBox(point), { layers }) : [];

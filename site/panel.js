@@ -1,6 +1,6 @@
-// The side panel: legend, area picker, change table, background switch.
+// The side panel: legend, area picker, change table, and the background switch.
 
-import { formatDate, formatKm, formatShortDate, sparkline } from './timeline.js';
+import { formatDate, formatKm, formatKmNumber, formatShortDate, sparkline } from './timeline.js';
 
 // Legend swatch mirrors the mark: a short line, dashed where the style dashes it.
 export function swatch(color, dash) {
@@ -20,22 +20,35 @@ export function swatch(color, dash) {
     return svg;
 }
 
-// One row per category, top to bottom as radinfra.de lists them. Clicking a row
-// hides the category; `onToggle(groupId, visible)` does the hiding on the map.
+// One row per category, top to bottom as radinfra.de lists them, each with a
+// checkbox; the section's checkbox switches all of them and shows a mix as
+// indeterminate. `onToggle(groupId, visible)` does the hiding on the map.
 export function buildLegend(groups, snapshots, onToggle) {
     const list = document.getElementById('legend-items');
+    const all = document.getElementById('legend-all');
     const zeros = snapshots.map(() => 0);
     const rows = [];
     let current = snapshots.length - 1;
 
+    const syncAll = () => {
+        const on = rows.filter((r) => r.input.checked).length;
+        all.checked = on === rows.length;
+        all.indeterminate = on > 0 && on < rows.length;
+    };
+    const setRow = (r, visible) => {
+        r.input.checked = visible;
+        r.row.classList.toggle('is-off', !visible);
+        onToggle(r.group.id, visible);
+    };
+
     // A style lists layers bottom to top; the legend reads top to bottom, so the
     // order is reversed for display only.
     for (const group of [...groups].reverse()) {
-        const row = document.createElement('button');
-        row.type = 'button';
-        row.className = 'legend-item legend-item--toggle';
-        row.setAttribute('role', 'switch');
-        row.setAttribute('aria-checked', 'true');
+        const row = document.createElement('label');
+        row.className = 'legend-item';
+        const input = document.createElement('input');
+        input.type = 'checkbox';
+        input.checked = true;
 
         const text = document.createElement('span');
         text.className = 'legend-label';
@@ -44,17 +57,22 @@ export function buildLegend(groups, snapshots, onToggle) {
         const sparkHolder = document.createElement('span');
         sparkHolder.className = 'legend-spark-holder';
         const value = document.createElement('span');
-        value.className = 'legend-km';
+        value.className = 'count-badge';
 
-        row.append(swatch(group.color, group.dash), text, sparkHolder, value);
-        row.addEventListener('click', () => {
-            const next = row.getAttribute('aria-checked') !== 'true';
-            row.setAttribute('aria-checked', String(next));
-            onToggle(group.id, next);
-        });
+        row.append(input, swatch(group.color, group.dash), text, sparkHolder, value);
         list.appendChild(row);
-        rows.push({ row, group, value, sparkHolder, spark: null, km: zeros });
+        const r = { row, input, group, value, sparkHolder, spark: null, km: zeros };
+        input.addEventListener('change', () => {
+            setRow(r, input.checked);
+            syncAll();
+        });
+        rows.push(r);
     }
+
+    all.addEventListener('change', () => {
+        all.indeterminate = false;
+        for (const r of rows) if (r.input.checked !== all.checked) setRow(r, all.checked);
+    });
 
     const legend = {
         // km per snapshot for every row, for the area now selected.
@@ -71,7 +89,7 @@ export function buildLegend(groups, snapshots, onToggle) {
             for (const r of rows) {
                 if (!r.spark) continue;
                 r.spark.mark(index);
-                r.value.textContent = formatKm(r.km[index]);
+                r.value.textContent = formatKmNumber(r.km[index]);
                 r.row.title = `${r.group.label}: ${formatKm(r.km[index])} am ${formatDate(snapshots[index].date)}`;
             }
         },
@@ -100,8 +118,8 @@ export function createTable(snapshots) {
 
 function formatDelta(value) {
     const rounded = Math.abs(value) < 10 ? Math.round(value * 10) / 10 : Math.round(value);
-    if (rounded === 0) return '±0 km';
-    return `${rounded > 0 ? '+' : '−'}${formatKm(Math.abs(rounded))}`;
+    if (rounded === 0) return '±0';
+    return `${rounded > 0 ? '+' : '−'}${formatKmNumber(Math.abs(rounded))}`;
 }
 
 // What changed in the selected area between two snapshots, per category. Rows
@@ -117,7 +135,7 @@ export function renderChanges(groups, scope, snapshots, fromIndex, toIndex) {
 
     const headRow = document.createElement('tr');
     headRow.append(
-        cell('th', 'Führungsform'),
+        cell('th', 'km je Führungsform'),
         cell('th', formatShortDate(snapshots[fromIndex].date), 'num'),
         cell('th', formatShortDate(snapshots[toIndex].date), 'num'),
         cell('th', 'Differenz', 'num'),
@@ -141,12 +159,12 @@ export function renderChanges(groups, scope, snapshots, fromIndex, toIndex) {
         name.append(swatch(group.color, group.dash), cell('span', group.label));
         const delta = cell('td', formatDelta(to - from), 'num');
         if (Math.abs(to - from) < 0.05) delta.classList.add('is-zero');
-        tr.append(name, cell('td', formatKm(from), 'num'), cell('td', formatKm(to), 'num'), delta);
+        tr.append(name, cell('td', formatKmNumber(from), 'num'), cell('td', formatKmNumber(to), 'num'), delta);
         body.appendChild(tr);
     }
     const total = document.createElement('tr');
-    total.append(cell('td', 'Summe'), cell('td', formatKm(sumFrom), 'num'),
-        cell('td', formatKm(sumTo), 'num'), cell('td', formatDelta(sumTo - sumFrom), 'num'));
+    total.append(cell('td', 'Summe'), cell('td', formatKmNumber(sumFrom), 'num'),
+        cell('td', formatKmNumber(sumTo), 'num'), cell('td', formatDelta(sumTo - sumFrom), 'num'));
     table.querySelector('tfoot').replaceChildren(total);
 }
 
@@ -200,52 +218,59 @@ export function describeArea(area, areas) {
     }
 }
 
-export function bindBasemapSwitch(imagery, currentDate) {
-    const buttons = [...document.querySelectorAll('[data-basemap]')];
+// Map or aerial photo, from the thumbnails in the background panel. While the
+// photo is on, a chip in the timeline names the year it shows.
+export function bindBasemapSwitch(imagery, currentDate, variants = []) {
+    const buttons = [...document.querySelectorAll('.basemap-btn[data-basemap]')];
     const note = document.getElementById('aerial-note');
+    const chip = document.getElementById('tl-aerial');
     if (!imagery) {
-        for (const b of buttons) if (b.dataset.basemap === 'aerial') b.disabled = true;
+        for (const b of buttons) {
+            if (b.dataset.basemap === 'aerial') {
+                b.disabled = true;
+                b.title = 'Luftbilder sind gerade nicht verfügbar';
+            }
+        }
         return () => {};
     }
+    const years = variants.map((v) => v.label).filter(Boolean);
+    const intro = `Das Luftbild folgt der Zeitleiste: zu jedem Stand das jüngste Bild davor`
+        + `${years.length ? ` (${years[0]}–${years[years.length - 1]})` : ''}.`;
+    note.textContent = intro;
+
     const describe = () => {
         const v = imagery.current;
-        note.hidden = !imagery.on || !v;
-        if (!v) return;
-        note.replaceChildren();
-        const strong = document.createElement('strong');
-        strong.textContent = `Luftbild ${v.label}`;
+        if (!imagery.on || !v) {
+            note.textContent = intro;
+            chip.hidden = true;
+            return;
+        }
         // Before the first capture there is nothing older to show; say so.
         const relation = v.start > currentDate()
             ? 'das früheste verfügbare, aufgenommen nach dem gewählten Datenstand'
             : 'das jüngste vor dem gewählten Datenstand';
-        note.append(strong, document.createTextNode(` (aufgenommen ${v.captured}), ${relation}. `));
+        const strong = document.createElement('strong');
+        strong.textContent = `Luftbild ${v.label}`;
         const credit = document.createElement('span');
-        credit.className = 'legend-note__credit';
+        credit.className = 'map-settings-credit';
         credit.textContent = v.attribution;
-        note.append(credit);
+        note.replaceChildren(strong, document.createTextNode(` (aufgenommen ${v.captured}), ${relation}.`), credit);
+        chip.textContent = `Luftbild ${v.label}`;
+        chip.dataset.tip = `Aufgenommen ${v.captured}, ${relation}.`;
+        chip.hidden = false;
     };
     for (const button of buttons) {
         button.addEventListener('click', () => {
             const aerial = button.dataset.basemap === 'aerial';
-            for (const b of buttons) b.setAttribute('aria-checked', String(b === button));
+            for (const b of buttons) {
+                b.classList.toggle('selected', b === button);
+                b.setAttribute('aria-checked', String(b === button));
+            }
             imagery.setOn(aerial, currentDate());
             describe();
         });
     }
     return describe;
-}
-
-export function bindPanelToggle() {
-    const panel = document.querySelector('.panel');
-    const button = document.getElementById('panel-toggle');
-    button.addEventListener('click', () => {
-        const collapsed = button.getAttribute('aria-expanded') === 'true';
-        panel.classList.toggle('is-collapsed', collapsed);
-        button.setAttribute('aria-expanded', String(!collapsed));
-        const label = collapsed ? 'Panel ausklappen' : 'Panel einklappen';
-        button.setAttribute('aria-label', label);
-        button.title = label;
-    });
 }
 
 // Most of the wait when zooming is the basemap, so the indicator follows the

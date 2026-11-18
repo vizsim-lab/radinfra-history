@@ -28,11 +28,14 @@ export function formatShortDate(iso) {
     return shortDateFormat.format(parseDate(iso));
 }
 
+// Kilometres without the unit, for columns whose header carries it.
+export function formatKmNumber(value) {
+    const digits = Math.abs(value) < 10 ? 1 : 0;
+    return value.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+}
+
 export function formatKm(value) {
-    const digits = value < 10 ? 1 : 0;
-    return `${value.toLocaleString('de-DE', {
-        minimumFractionDigits: digits, maximumFractionDigits: digits,
-    })} km`;
+    return `${formatKmNumber(value)} km`;
 }
 
 function el(name, attrs = {}, parent = null) {
@@ -124,15 +127,19 @@ export function createTimeline(container, { snapshots, values: initialValues, la
             text.textContent = `${v.toLocaleString('de-DE', { minimumFractionDigits: digits, maximumFractionDigits: digits })}${top ? ' km' : ''}`;
         }
 
-        // Years along the bottom, at 1 January.
+        // Years along the bottom, at 1 January. Where a year is narrower than its
+        // label (a phone), only every second or third year is labelled.
         const axis = el('g', { class: 'tl-axis' }, svg);
         const firstYear = new Date(t0).getUTCFullYear();
         const lastYear = new Date(t1).getUTCFullYear();
+        const yearPx = x(Date.UTC(firstYear + 1, 0, 1)) - x(Date.UTC(firstYear, 0, 1));
+        const every = Math.max(1, Math.ceil(36 / Math.max(1, yearPx)));
         for (let year = firstYear; year <= lastYear; year += 1) {
             const t = Date.UTC(year, 0, 1);
             if (t < t0 || t > t1) continue;
             const px = x(t);
             el('line', { x1: px, x2: px, y1: MARGIN.top + PLOT_HEIGHT, y2: MARGIN.top + PLOT_HEIGHT + 4 }, axis);
+            if (year % every !== 0) continue;
             const text = el('text', { x: px, y: MARGIN.top + PLOT_HEIGHT + 15, 'text-anchor': 'middle' }, axis);
             text.textContent = String(year);
         }
