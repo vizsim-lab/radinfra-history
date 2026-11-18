@@ -15,9 +15,9 @@
 <path d="M44.62 166.88A92 92 0 0 0 120.62 219.7" fill="none" stroke="#f08ed5" stroke-width="20" stroke-dasharray="15.15 9.09" stroke-dashoffset="-4.55"/>
 <path d="M120.62 219.7A92 92 0 0 0 204.09 179.71" fill="none" stroke="#2dd4bf" stroke-width="20" stroke-dasharray="15.15 9.09" stroke-dashoffset="-4.55"/>
 <path d="M204.09 179.71A92 92 0 0 0 210.55 87.38" fill="none" stroke="#2dd4bf" stroke-width="20"/>
-<path d="M210.55 87.38A92 92 0 0 0 133.46 36.16" fill="none" stroke="#7a0ff5" stroke-width="20"/>
-<path d="M133.46 36.16A92 92 0 0 0 50.84 77.89" fill="none" stroke="#174ed9" stroke-width="20"/>
-<path d="M30.44 63.42L36.59 117.59L72.13 91.02Z" fill="#174ed9" stroke="#174ed9" stroke-width="3" stroke-linejoin="round"/>
+<path d="M210.55 87.38A92 92 0 0 0 133.46 36.16" fill="none" stroke="#174ed9" stroke-width="20"/>
+<path d="M133.46 36.16A92 92 0 0 0 50.84 77.89" fill="none" stroke="#7a0ff5" stroke-width="20"/>
+<path d="M30.44 63.42L36.59 117.59L72.13 91.02Z" fill="#7a0ff5" stroke="#7a0ff5" stroke-width="3" stroke-linejoin="round"/>
 <path class="ink" d="M128 128L170 128" stroke="#1f2937" stroke-width="11" stroke-linecap="round"/>
 <path class="ink" d="M128 128L128 68" stroke="#1f2937" stroke-width="8" stroke-linecap="round"/>
 <circle class="ink-fill" cx="128" cy="128" r="12" fill="#1f2937"/>

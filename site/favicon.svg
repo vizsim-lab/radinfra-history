@@ -12,8 +12,8 @@
 }
 </style>
 <path d="M56.76 172.51A84 84 0 0 0 180.41 193.65" fill="none" stroke="#2dd4bf" stroke-width="38"/>
-<path d="M179.72 194.19A84 84 0 0 0 187.81 69.02" fill="none" stroke="#7a0ff5" stroke-width="38"/>
-<path d="M188.42 69.65A84 84 0 0 0 63.65 74.01" fill="none" stroke="#174ed9" stroke-width="38"/>
-<path d="M33.79 47.53L44.46 119.22L94.47 99.36Z" fill="#174ed9"/>
+<path d="M179.72 194.19A84 84 0 0 0 187.81 69.02" fill="none" stroke="#174ed9" stroke-width="38"/>
+<path d="M188.42 69.65A84 84 0 0 0 63.65 74.01" fill="none" stroke="#7a0ff5" stroke-width="38"/>
+<path d="M33.79 47.53L44.46 119.22L94.47 99.36Z" fill="#7a0ff5"/>
 <path class="ink" d="M128 128L162 128M128 128L128 78" stroke="#1f2937" stroke-width="20" stroke-linecap="round" fill="none"/>
 </svg>

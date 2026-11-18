@@ -3,8 +3,8 @@
 The mark is a bicycle wheel that is also a clock ("Rad" in German is both wheel
 and bike). Its rim runs counter-clockwise like a history/rewind arrow and is drawn
 as a way in OSM terms: segments between vertices, coloured in radinfra.de's
-category colours, from dashed markings to separated cycleways, so the arrow shows
-infrastructure changing over time.
+category colours, from dashed markings to separated cycleways and protected lanes,
+so along the arrow the infrastructure gets better over time.
 
 The wordmark is outlined from Inter (SIL Open Font License), so the files need
 no fonts to render.
@@ -65,13 +65,16 @@ def arrowhead(theta_base, length_deg, half_width):
 # The rim: from the tail at ~8 o'clock round to ~10 o'clock, counter-clockwise.
 TAIL = 205.0
 HEAD = 507.0                      # = 147°, where the arrowhead's base sits
+# Along the arrow the infrastructure gets better: shared footway, advisory lane,
+# cycle lane, separated cycleway, and at the head the protected cycle lane.
 SEGMENTS = [                      # (colour, dashed) from oldest to newest
     (PINK, True),
     (TEAL, True),
     (TEAL, False),
-    (PURPLE, False),
     (BLUE, False),
+    (PURPLE, False),
 ]
+HEAD_COLOUR = PURPLE
 
 
 def favicon():
@@ -79,14 +82,14 @@ def favicon():
     vertices, which would turn to mush at that size."""
     r, w = 84.0, 38.0
     tail, head = 212.0, 500.0
-    colours = [TEAL, PURPLE, BLUE]
+    colours = [TEAL, BLUE, PURPLE]
     span = (head - tail) / len(colours)
     parts = [f'<path d="{arc(tail + i * span, tail + (i + 1) * span + (0.6 if i < 2 else 0), r)}" '
              f'fill="none" stroke="{c}" stroke-width="{f(w)}"/>' for i, c in enumerate(colours)]
     bx_out, by_out = pt(head - 0.5, r + w * 1.05)
     bx_in, by_in = pt(head - 0.5, r - w * 1.05)
     tx, ty = pt(head + 34, r)
-    parts.append(f'<path d="M{f(bx_out)} {f(by_out)}L{f(tx)} {f(ty)}L{f(bx_in)} {f(by_in)}Z" fill="{BLUE}"/>')
+    parts.append(f'<path d="M{f(bx_out)} {f(by_out)}L{f(tx)} {f(ty)}L{f(bx_in)} {f(by_in)}Z" fill="{HEAD_COLOUR}"/>')
     hx, hy = pt(0, 34)
     mx, my = pt(90, 50)
     parts.append(f'<path class="ink" d="M{f(C)} {f(C)}L{f(hx)} {f(hy)}M{f(C)} {f(C)}L{f(mx)} {f(my)}" '
@@ -122,8 +125,8 @@ def mark(detail=True):
             dash = f' stroke-dasharray="{f(on)} {f(off)}" stroke-dashoffset="{f(-off / 2)}"'
         parts.append(f'<path d="{arc(a0, a1)}" fill="none" stroke="{colour}" stroke-width="{f(W)}"{dash}/>')
 
-    parts.append(f'<path d="{arrowhead(HEAD - 0.5, 27, W * 1.25)}" fill="{BLUE}" '
-                 f'stroke="{BLUE}" stroke-width="3" stroke-linejoin="round"/>')
+    parts.append(f'<path d="{arrowhead(HEAD - 0.5, 27, W * 1.25)}" fill="{HEAD_COLOUR}" '
+                 f'stroke="{HEAD_COLOUR}" stroke-width="3" stroke-linejoin="round"/>')
 
     # Clock hands at three o'clock, the hub as the wheel's axle. (Ten past ten
     # reads as a tick mark at favicon size.)
