@@ -3,8 +3,8 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>radinfra history — Radinfrastruktur Berlin im Zeitverlauf</title>
-    <meta name="description" content="Wie sich die in OpenStreetMap erfasste Radinfrastruktur in Berlin seit 2016 entwickelt hat, klassifiziert wie radinfra.de." />
+    <title>radinfra history — Radinfrastruktur in Deutschland im Zeitverlauf</title>
+    <meta name="description" content="Wie sich die in OpenStreetMap erfasste Radinfrastruktur in Deutschland seit 2016 entwickelt hat, für jedes Land, jeden Kreis und jede Gemeinde, klassifiziert wie radinfra.de." />
     <link rel="canonical" href="https://vizsim-lab.github.io/radinfra-history/" />
     <!-- Link previews (Mastodon, Slack, messengers) need absolute URLs. The image
          is drawn by scripts/og_image.py. -->
@@ -12,13 +12,13 @@
     <meta property="og:site_name" content="radinfra history" />
     <meta property="og:locale" content="de_DE" />
     <meta property="og:url" content="https://vizsim-lab.github.io/radinfra-history/" />
-    <meta property="og:title" content="radinfra history — Radinfrastruktur Berlin im Zeitverlauf" />
-    <meta property="og:description" content="Karte mit Zeitleiste: wie sich die in OpenStreetMap erfasste Radinfrastruktur in Berlin seit 2016 entwickelt hat, klassifiziert wie bei radinfra.de." />
+    <meta property="og:title" content="radinfra history — Radinfrastruktur in Deutschland im Zeitverlauf" />
+    <meta property="og:description" content="Karte mit Zeitleiste: wie sich die in OpenStreetMap erfasste Radinfrastruktur in Deutschland seit 2016 entwickelt hat, für jedes Land, jeden Kreis und jede Gemeinde, klassifiziert wie bei radinfra.de." />
     <meta property="og:image" content="https://vizsim-lab.github.io/radinfra-history/og.png" />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Karte Berlins mit der Radinfrastruktur in den Farben von radinfra.de, daneben der Schriftzug radinfra history" />
+    <meta property="og:image:alt" content="Karte Deutschlands mit der Radinfrastruktur in den Farben von radinfra.de, daneben der Schriftzug radinfra history" />
     <meta name="twitter:card" content="summary_large_image" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="preconnect" href="https://tiles.openfreemap.org" crossorigin />
@@ -35,7 +35,7 @@
 
     <div id="fatal" class="fatal" role="alert" hidden></div>
 
-    <!-- While an Ortsteil is picked on the map (areas.js). -->
+    <!-- While an area is picked on the map (areas.js). -->
     <div id="pick-bar" class="pick-bar" role="status" hidden>
         <p class="pick-hint">Gebiet auf der Karte anklicken.<span class="pick-hint__key"> <kbd>Esc</kbd> bricht ab.</span></p>
         <button type="button" id="pick-cancel" class="btn">Abbrechen</button>
@@ -52,7 +52,7 @@
                     <img src="logo-wordmark-light.svg" alt="radinfra history" width="186" height="40" />
                 </h1>
                 <div class="legend-subtext">
-                    Radinfrastruktur Berlin in OpenStreetMap<br />
+                    Radinfrastruktur <span id="region-name">Deutschland</span> in OpenStreetMap<br />
                     vom <span id="range-start">…</span> bis <span id="range-end">…</span>
                     <span class="info-icon" tabindex="0" data-tip="Klassifiziert wie bei radinfra.de (tilda-geo von FixMyCity), nachgerechnet mit OSMnexus. Keine Veröffentlichung von radinfra.de. Daten © OpenStreetMap-Mitwirkende, ODbL.">i</span>
                 </div>
@@ -145,7 +145,7 @@
                 <div class="legend-section-content">
                     <div class="legend-modes" role="radiogroup" aria-label="Hintergrund">
                         <button type="button" class="legend-chip" role="radio" aria-checked="true" data-basemap="map">Karte</button>
-                        <button type="button" class="legend-chip" role="radio" aria-checked="false" data-basemap="aerial">Luftbild Berlin</button>
+                        <button type="button" class="legend-chip" role="radio" aria-checked="false" data-basemap="aerial">Luftbild</button>
                     </div>
                     <p id="aerial-note" class="legend-meta" aria-live="polite">
                         Das Luftbild folgt der Zeitleiste: zu jedem Stand das jüngste Bild davor.
@@ -176,10 +176,23 @@
                         Richtungsangabe, und ohne sie nimmt radinfra.de bei Radwegen beide Richtungen an.
                     </p>
                     <p>
-                        Der Rückgang 2021 bis 2024 (in der Zeitleiste markiert) ist vor allem eine
-                        Umstellung der Kartierung: Radwege, die an der Straße eingetragen waren, wurden zu
-                        eigenen Wegen, anfangs oft noch ohne vollständige Tags, und auf vielen Gehwegen
-                        wurde <code>bicycle=yes</code> entfernt oder korrigiert.
+                        Die Gebiete sind die Grenzen aus OpenStreetMap: Länder, Kreise und Gemeinden, in
+                        Berlin Bezirke und Ortsteile, so wie sie zum jüngsten Stand eingetragen sind, für
+                        alle Daten gleich. Eine Linie über eine Grenze zählt mit ihrem Teil innerhalb.
+                        Von weitem, unter Zoomstufe 9, fehlen kurze Abschnitte (unter 100 bis 250 m), wie
+                        bei radinfra.de; die Zahlen enthalten sie.
+                    </p>
+                    <p>
+                        Sprünge in einem Gebiet sind oft eine Umstellung der Kartierung, nicht der
+                        Straßen. In Berlin etwa fällt die Kurve 2021 bis 2024, weil Radwege, die an der
+                        Straße eingetragen waren, zu eigenen Wegen wurden, anfangs oft noch ohne
+                        vollständige Tags, und auf vielen Gehwegen <code>bicycle=yes</code> entfernt
+                        oder korrigiert wurde.
+                    </p>
+                    <p>
+                        Luftbilder gibt es, wo Länder und Städte sie anbieten, in einigen Ländern auch
+                        ältere Jahrgänge. Bayern (landesweit), Schleswig-Holstein, Bremen und
+                        Sachsen-Anhalt fehlen.
                     </p>
                     <p>
                         Daten © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap-Mitwirkende</a> (ODbL).
@@ -221,7 +234,7 @@
             </div>
             <span id="tl-aerial" class="tl-chip" tabindex="0" hidden></span>
             <div class="tl-readout tl-readout--right">
-                <span class="tl-readout__label"><span class="tl-long" id="tl-scope">Berlin </span>gesamt</span>
+                <span class="tl-readout__label"><span class="tl-long" id="tl-scope">Deutschland </span>gesamt</span>
                 <strong id="tl-total">…</strong>
             </div>
         </div>

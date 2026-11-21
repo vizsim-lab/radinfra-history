@@ -469,6 +469,7 @@ async function main() {
         return categories.map((c) => [c, g]);
     }));
 
+    if (timeline.region) document.getElementById('region-name').textContent = timeline.region;
     document.getElementById('range-start').textContent = formatDate(snapshots[0].date);
     document.getElementById('range-end').textContent = formatDate(snapshots[snapshots.length - 1].date);
 

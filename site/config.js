@@ -4,10 +4,10 @@ const base = new URL('./', window.location.href);
 const LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
 const params = new URLSearchParams(window.location.search);
 
-// The region the page shows: Berlin. Locally ?region= shows another one built into
-// site/data/ (germany, saarland): a preview until the page is made for Germany.
+// The region the page shows: Germany. Locally ?region= shows another one built into
+// site/data/ (berlin, saarland).
 const asked = params.get('region');
-export const REGION_SLUG = LOCAL && asked && /^[a-z-]+$/.test(asked) ? asked : 'berlin';
+export const REGION_SLUG = LOCAL && asked && /^[a-z-]+$/.test(asked) ? asked : 'germany';
 
 // The data is not on GitHub Pages but in the B2 bucket radinfra-history, behind
 // Cloudflare (scripts/publish_b2.sh). Locally scripts/serve.py serves the same
@@ -104,7 +104,7 @@ const VIEWS = {
     germany: { center: [10.45, 51.16], zoom: 9, minZoom: 5 },
     saarland: { center: [6.95, 49.38], zoom: 10, minZoom: 8 },
 };
-export const initialMapConfig = { ...(VIEWS[REGION_SLUG] ?? VIEWS.berlin), maxZoom: 18 };
+export const initialMapConfig = { ...(VIEWS[REGION_SLUG] ?? VIEWS.germany), maxZoom: 18 };
 
 // Hover highlight, drawn as a wide blurred halo beneath the category lines so
 // their colour stays readable on top of it (as in vizsim/bikeneat).
