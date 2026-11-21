@@ -256,7 +256,11 @@ export function bindBasemapSwitch(imagery, currentDate, series = []) {
         credit.className = 'legend-meta__credit';
         credit.textContent = v.attribution;
         const captured = v.captured ? ` (aufgenommen ${v.captured})` : '';
-        note.replaceChildren(strong, document.createTextNode(`${captured}, ${relation}.`), credit);
+        // A service that draws only close up (Hessen's): from which map zoom. MapLibre
+        // asks 256-pixel tiles one zoom higher than the map's and rounds.
+        const from = v.source.minzoom ? v.source.minzoom - ((v.source.tileSize ?? 512) === 256 ? 1.5 : 0.5) : 0;
+        const closeUp = from > 9 ? ` Sichtbar erst ab Zoom ${String(from).replace('.', ',')}.` : '';
+        note.replaceChildren(strong, document.createTextNode(`${captured}, ${relation}.${closeUp}`), credit);
         chip.textContent = name;
         chip.dataset.tip = v.captured ? `Aufgenommen ${v.captured}, ${relation}.` : `${relation[0].toUpperCase()}${relation.slice(1)}.`;
         chip.hidden = false;

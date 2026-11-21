@@ -96,6 +96,86 @@ function size(geometry) {
   return Math.abs(total)
 }
 
+// Each capture is tried as the page would load it: from another origin, at a point
+// it covers. One that answers there with no image, or without a CORS header (the
+// browser then drops the tiles), is left out: in November 2026 Frankfurt, Mainz,
+// Sachsen-Anhalt (no CORS), Erlangen 2016/2018, Ludwigshafen 2022. One that draws
+// only from some zoom on (Hessen from 15: its WMS renders from about 1:25,000) gets
+// that as its minzoom. A server error is tried again and then kept with a warning:
+// it may be passing (the codefor mirror of Berlin's photos has its moments).
+const ORIGIN = 'http://127.0.0.1:8765'
+const EARTH = 20037508.342789244
+
+function inRing(ring, [x, y]) {
+  let inside = false
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i]
+    const [xj, yj] = ring[j]
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside
+  }
+  return inside
+}
+
+// A point inside the coverage: its largest polygon's box, searched on a grid.
+function pointIn(geometry) {
+  const polygons = geometry.type === 'MultiPolygon' ? geometry.coordinates : [geometry.coordinates]
+  const [outer] = polygons.reduce((a, b) => (size({ type: 'Polygon', coordinates: b }) > size({ type: 'Polygon', coordinates: a }) ? b : a))
+  const xs = outer.map((p) => p[0])
+  const ys = outer.map((p) => p[1])
+  const [w, s, e, n] = [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)]
+  for (const f of [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8]) {
+    for (const g of [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8]) {
+      const p = [w + (e - w) * f, s + (n - s) * g]
+      if (inRing(outer, p)) return p
+    }
+  }
+  return [(w + e) / 2, (s + n) / 2]
+}
+
+// The URL of the tile at a point and zoom, as MapLibre would request it.
+function tileUrl(template, [lon, lat], z) {
+  const n = 2 ** z
+  const x = Math.floor((lon + 180) / 360 * n)
+  const y = Math.floor((1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2 * n)
+  const size = 2 * EARTH / n
+  const bbox = [x * size - EARTH, EARTH - (y + 1) * size, (x + 1) * size - EARTH, EARTH - y * size]
+  return template.replace('{bbox-epsg-3857}', bbox.map((v) => v.toFixed(3)).join(','))
+    .replace('{z}', z).replace('{x}', x).replace('{y}', y)
+}
+
+async function answer(url) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const r = await fetch(url, { headers: { Origin: ORIGIN }, signal: AbortSignal.timeout(30000) })
+      const bytes = (await r.arrayBuffer()).byteLength
+      if (r.status >= 500 && attempt < 2) continue
+      return {
+        status: r.status,
+        image: (r.headers.get('content-type') ?? '').startsWith('image/') && bytes > 100,
+        cors: Boolean(r.headers.get('access-control-allow-origin')),
+      }
+    } catch (error) {
+      if (attempt < 2) continue
+      return { status: 0, image: false, cors: false }
+    }
+  }
+}
+
+async function probe(source, geometry) {
+  const point = pointIn(geometry)
+  const top = await answer(tileUrl(source.tiles[0], point, 16))
+  if (top.status >= 500 || top.status === 0) return { keep: true, warn: `server error ${top.status}, kept` }
+  if (!top.image) return { keep: false, why: `no image (HTTP ${top.status})` }
+  if (!top.cors) return { keep: false, why: 'no CORS header' }
+  let minzoom = 16
+  for (let z = 15; z >= 9; z--) {
+    const a = await answer(tileUrl(source.tiles[0], point, z))
+    if (!(a.image && a.cors)) break
+    minzoom = z
+  }
+  return { keep: true, minzoom }
+}
+
 function variant(layer, { label, order }) {
   const startDate = layer.startDate ?? yearInName(layer.name)
   const endDate = layer.startDate ? layer.endDate : startDate
@@ -139,11 +219,27 @@ for (const spec of SERIES[region]) {
   // Each capture has its own coverage: Mecklenburg-Vorpommern and Rheinland-Pfalz
   // fly about half the Land each year. The series covers what its largest capture
   // does; a capture that covers something else carries its own.
-  const geometries = await Promise.all(picked.map(([layer]) => getGeometry(layer)))
+  let geometries = await Promise.all(picked.map(([layer]) => getGeometry(layer)))
   if (geometries.some((g) => !g)) throw new Error(`${spec.place}: a capture without coverage in the index`)
+  const probes = await Promise.all(picked.map(([layer], i) => probe(variant(layer, {}).source, geometries[i])))
+  for (const [i, result] of probes.entries()) {
+    const name = picked[i][0].name
+    if (!result.keep) console.log(`  left out: ${name}: ${result.why}`)
+    else if (result.warn) console.log(`  warning: ${name}: ${result.warn}`)
+  }
+  const kept = picked.map((p, i) => [p, geometries[i], probes[i]]).filter(([, , r]) => r.keep)
+  if (!kept.length) {
+    console.log(`  left out: ${spec.place}: no capture loads`)
+    continue
+  }
+  picked = kept.map(([p]) => p)
+  geometries = kept.map(([, g]) => g)
   const coverage = round(geometries.reduce((a, b) => (size(b) > size(a) ? b : a)))
   const variants = picked.map(([layer, meta], i) => {
     const v = variant(layer, meta)
+    // Below this zoom the service draws nothing: MapLibre then asks for no tiles.
+    const minzoom = kept[i][2].minzoom
+    if (minzoom > 9) v.source.minzoom = minzoom
     const own = round(geometries[i])
     return JSON.stringify(own) === JSON.stringify(coverage) ? v : { ...v, coverage: own }
   })
