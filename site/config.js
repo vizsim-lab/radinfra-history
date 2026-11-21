@@ -2,25 +2,29 @@
 
 const REGION_SLUG = 'berlin';
 
-// Tiles and timeline are published next to the page (GitHub Pages), so plain
-// relative URLs work locally (scripts/serve.py) and in production alike.
 const base = new URL('./', window.location.href);
 
-export const TIMELINE_URL = new URL(`data/${REGION_SLUG}_timeline.json`, base).href;
+// The data is not on GitHub Pages but in the B2 bucket radinfra-history, behind
+// Cloudflare (scripts/publish_b2.sh). Locally scripts/serve.py serves the same
+// layout from site/data/, where the pipeline and scripts/fetch_data.sh put it;
+// ?data=remote there loads the bucket instead.
+const BUCKET_URL = 'https://tiles.vizsim.de/file/radinfra-history/';
+const LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+const REMOTE = !LOCAL || new URLSearchParams(window.location.search).get('data') === 'remote';
+export const DATA_BASE = new URL(`${REGION_SLUG}/`, REMOTE ? BUCKET_URL : new URL('data/', base)).href;
 
-// Files of one build of the data carry its id (the timeline's `build`) in their
-// URLs, so a browser never combines tiles and popup data from two builds.
-const versioned = (path, build) => {
-    const url = new URL(path, base);
-    if (build) url.searchParams.set('v', build);
-    return url.href;
-};
+// The one file that changes: it names the current build (pipeline/builds.py).
+export const TIMELINE_URL = new URL('timeline.json', DATA_BASE).href;
+
+// Everything else is in that build's folder, which never changes once published:
+// a browser cannot combine tiles and popup data of two builds.
+const buildFile = (build, name) => new URL(`builds/${build}/${name}`, DATA_BASE).href;
 // MapLibre Tiles in two archives (pipeline/tiles.py): details and overview.
-export const tilesURL = (build) => `pmtiles://${versioned(`tiles/${REGION_SLUG}.pmtiles`, build)}`;
-export const overviewTilesURL = (build) => `pmtiles://${versioned(`tiles/${REGION_SLUG}_lo.pmtiles`, build)}`;
+export const tilesURL = (build) => `pmtiles://${buildFile(build, 'tiles.pmtiles')}`;
+export const overviewTilesURL = (build) => `pmtiles://${buildFile(build, 'tiles_lo.pmtiles')}`;
 export const TILE_ENCODING = 'mlt';
 // The popup's dates, read per line on click (pipeline/versions.py, write_spans).
-export const spansURL = (build) => versioned(`data/${REGION_SLUG}_spans.bin`, build);
+export const spansURL = (build) => buildFile(build, 'spans.bin');
 
 // radinfra.de's own "details" style. Its layers are drawn as they are — colours,
 // widths, dashes, filters — against our source, plus a time filter. Keeping the
@@ -111,10 +115,11 @@ export const SIDE_OFFSET_STOPS = [
 ];
 
 // Bezirke and Ortsteile with km per category and snapshot (pipeline/areas.py).
-export const AREAS_URL = new URL(`data/${REGION_SLUG}_areas.json`, base).href;
-export const AREAS_GEOJSON_URL = new URL(`data/${REGION_SLUG}_areas.geojson`, base).href;
+export const areasURL = (build) => buildFile(build, 'areas.json');
+export const areasGeojsonURL = (build) => buildFile(build, 'areas.geojson');
 
-// Berlin's aerial photo series, from the OSM Editor Layer Index (scripts/imagery).
+// Berlin's aerial photo series, from the OSM Editor Layer Index (scripts/imagery);
+// part of the page, not of the data.
 export const IMAGERY_URL = new URL(`data/${REGION_SLUG}_imagery.json`, base).href;
 
 // Version history of a way, more readable than osm.org's own list.

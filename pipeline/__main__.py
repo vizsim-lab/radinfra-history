@@ -6,6 +6,8 @@
 
 Steps, each also runnable on its own: snapshots -> classify -> versions -> areas -> tiles.
 `update` adds one newer extract to existing versions (the quarterly workflow).
+Every command from `versions` on makes a new build in site/data/<slug>/
+(pipeline/builds.py); `areas` or `tiles` alone take the rest from the current one.
 """
 
 import argparse
@@ -20,12 +22,20 @@ import duckdb
 
 from . import snapshots as snaps
 from .areas import build_areas
+from .builds import REQUIRED, Region
 from .classify import classify_all, classify_snapshot, date_key
 from .tiles import build_tiles
 from .versions import append_snapshot, build_versions, write_spans
 
 DATA = Path("data")
 SITE = Path("site")
+
+# Files of the current build a command takes over: what it does not make anew and
+# what does not depend on what it makes. New versions change everything else.
+KEEP = {
+    "areas": [name for name in REQUIRED if not name.startswith("areas.")],
+    "tiles": [name for name in REQUIRED if not name.startswith("tiles")],
+}
 
 
 def _snapshot_list(args):
@@ -62,7 +72,7 @@ def main():
     source.add_argument("--pbf", nargs="*", default=[], help="dated extracts instead of --osh (globs ok)")
     source.add_argument("--date", help="update: date of the extract (default: from its header)")
     parser.add_argument("--region", default="Berlin")
-    parser.add_argument("--slug", default="berlin", help="file name stem for tiles and timeline")
+    parser.add_argument("--slug", default="berlin", help="the region's folder in site/data/ and in the bucket")
     parser.add_argument("--snapshot-dir", default=DATA / "snapshots", type=Path)
     parser.add_argument("--classified-dir", default=DATA / "classified", type=Path)
     parser.add_argument("--threads", type=int, default=2)
@@ -72,17 +82,11 @@ def main():
     parser.add_argument("--minzoom", type=int, default=9)
     parser.add_argument("--maxzoom", type=int, default=14)
     args = parser.parse_args()
-
-    versions_path = DATA / f"{args.slug}_versions.parquet"
-    timeline_path = SITE / "data" / f"{args.slug}_timeline.json"
-    tiles_path = SITE / "tiles" / f"{args.slug}.pmtiles"
-    areas_json = SITE / "data" / f"{args.slug}_areas.json"
-    areas_geojson = SITE / "data" / f"{args.slug}_areas.geojson"
-    spans_path = SITE / "data" / f"{args.slug}_spans.bin"
+    region = Region(SITE / "data" / args.slug)
 
     started = time.time()
     if args.command == "update":
-        _update(args, versions_path, timeline_path, spans_path, areas_json, areas_geojson, tiles_path)
+        _update(args, region)
         print(f"done in {time.time() - started:.0f} s", flush=True)
         return
 
@@ -98,24 +102,25 @@ def main():
     else:
         classified = None
 
+    work = region.start(keep=KEEP.get(args.command, ()))
+    versions_path, timeline_path = work / "versions.parquet", work / "timeline.json"
     if args.command in ("all", "versions"):
         print("[versions]", flush=True)
         build_versions(classified or _existing_classified(args.classified_dir),
                        versions_path, timeline_path, region=args.region)
-        write_spans(versions_path, timeline_path, spans_path)
-        if args.command == "versions":
-            return
+        write_spans(versions_path, timeline_path, work / "spans.bin")
 
     if args.command in ("all", "areas"):
         print("[areas]", flush=True)
         boundaries = args.boundaries_pbf or max(
             Path(args.snapshot_dir).glob("*.osm.pbf"), key=snaps.date_from_filename)
-        build_areas(boundaries, versions_path, timeline_path, areas_json, areas_geojson)
-        if args.command == "areas":
-            return
+        build_areas(boundaries, versions_path, timeline_path, work / "areas.json", work / "areas.geojson")
 
-    print("[tiles]", flush=True)
-    build_tiles(versions_path, tiles_path, args.minzoom, args.maxzoom)
+    if args.command in ("all", "tiles"):
+        print("[tiles]", flush=True)
+        build_tiles(versions_path, work / "tiles.pmtiles", args.minzoom, args.maxzoom)
+
+    region.finish()
     print(f"done in {time.time() - started:.0f} s", flush=True)
 
 
@@ -128,19 +133,23 @@ def _github_output(**values):
                 fh.write(f"{key}={value}\n")
 
 
-def _update(args, versions_path, timeline_path, spans_path, areas_json, areas_geojson, tiles_path):
-    """One newer extract onto the existing versions: classify, append, then the
-    areas (with the extract's boundaries) and the tiles from scratch."""
+def _update(args, region):
+    """One newer extract onto the versions of the current build: classify, append,
+    then the areas (with the extract's boundaries) and the tiles from scratch."""
     files = [p for pattern in args.pbf for p in sorted(glob.glob(pattern))]
     if len(files) != 1:
         raise SystemExit("update: pass the one new extract with --pbf")
     pbf = Path(files[0])
     snapshot_date = snaps.parse_date(args.date) if args.date else snaps.extract_date(pbf)
-    last = date.fromisoformat(json.loads(timeline_path.read_text(encoding="utf-8"))["snapshots"][-1]["date"])
+    current = region.current()
+    if current is None:
+        raise SystemExit(f"{region.dir}: no build to update (scripts/fetch_data.sh first)")
+    old = region.build_dir(current)
+    last = date.fromisoformat(json.loads((old / "timeline.json").read_text(encoding="utf-8"))["snapshots"][-1]["date"])
     if snapshot_date <= last:
         print(f"[update] {pbf.name} is from {snapshot_date}, not after the last snapshot {last}: nothing to do",
               flush=True)
-        _github_output(changed="false", date=snapshot_date.isoformat())
+        _github_output(changed="false", date=snapshot_date.isoformat(), build=current)
         return
     print(f"[update] {pbf.name} from {snapshot_date}, after {last}", flush=True)
     snaps.check_coverage(pbf)
@@ -148,9 +157,15 @@ def _update(args, versions_path, timeline_path, spans_path, areas_json, areas_ge
     print("[classify]", flush=True)
     classified = classify_snapshot(snapshot_date, pbf, args.classified_dir / f"{snapshot_date.isoformat()}.parquet",
                                    args.threads)
+    # The areas there now must all be there after, so a broken boundary cannot drop one.
+    areas_now = old / "areas.json"
+    keep_areas = ([a["slug"] for a in json.loads(areas_now.read_text(encoding="utf-8"))["areas"]]
+                  if areas_now.is_file() else [])
+    work = region.start(keep=("timeline.json", "versions.parquet"))
+    versions_path, timeline_path = work / "versions.parquet", work / "timeline.json"
     print("[versions]", flush=True)
     append_snapshot(versions_path, timeline_path, classified, snapshot_date)
-    write_spans(versions_path, timeline_path, spans_path)
+    write_spans(versions_path, timeline_path, work / "spans.bin")
     # A new or changed category needs an edit of the way's tags, so nearly all of
     # those ways should have been edited since the last snapshot. Far fewer would
     # mean that the extract differs, not OSM.
@@ -162,12 +177,11 @@ def _update(args, versions_path, timeline_path, spans_path, areas_json, areas_ge
           + (f"{edited:,} of them edited in OSM since {last}" if edited is not None
              else "the extract has no timestamps to check them"), flush=True)
     print("[areas]", flush=True)
-    current = json.loads(areas_json.read_text(encoding="utf-8")) if areas_json.is_file() else {"areas": []}
-    build_areas(pbf, versions_path, timeline_path, areas_json, areas_geojson,
-                keep=[a["slug"] for a in current["areas"]])
+    build_areas(pbf, versions_path, timeline_path, work / "areas.json", work / "areas.geojson", keep=keep_areas)
     print("[tiles]", flush=True)
-    build_tiles(versions_path, tiles_path, args.minzoom, args.maxzoom)
-    _github_output(changed="true", date=snapshot_date.isoformat())
+    build_tiles(versions_path, work / "tiles.pmtiles", args.minzoom, args.maxzoom)
+    build = region.finish()
+    _github_output(changed="true", date=snapshot_date.isoformat(), build=build)
 
 
 if __name__ == "__main__":

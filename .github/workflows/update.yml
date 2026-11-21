@@ -1,10 +1,10 @@
 # Adds the newest state of OSM to the map, once a quarter.
 #
 # Geofabrik's public Berlin extract (no login, no personal metadata) is classified
-# like every snapshot before it and appended to the versions kept on the `data`
-# branch (pipeline/versions.py, append_snapshot); areas and tiles are rebuilt from
-# them, published on that branch, and Pages is redeployed. The history file is
-# not needed again: the versions are the state.
+# like every snapshot before it and appended to the versions of the build in the
+# bucket (pipeline/versions.py, append_snapshot); areas, tiles and popup file are
+# rebuilt from them and published as a new build (scripts/publish_b2.sh). The
+# history file is not needed again: the versions are the state.
 #
 # Started by hand, it builds without publishing unless `publish` is ticked; the
 # result is kept as an artifact either way.
@@ -26,8 +26,8 @@ on:
         default: false
 
 permissions:
-  contents: write  # push the data branch
-  actions: write   # start the Pages workflow
+  contents: read
+  actions: write   # keep the schedule alive
 
 concurrency:
   group: update
@@ -62,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      EXTRACT_URL: https://download.geofabrik.de/europe/germany/berlin-latest.osm.pbf
+      EXTRACT_URL: https://download.geofabrik.de/europe/germany/berlin/berlin-latest.osm.pbf
     steps:
       - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
@@ -74,8 +74,8 @@ jobs:
           uv sync --locked
           scripts/fetch_osmnexus.sh
 
-      - name: Current data from the data branch
-        run: scripts/fetch_data.sh
+      - name: Current build from the bucket
+        run: scripts/fetch_data.sh berlin
 
       - name: Newest extract
         run: |
@@ -95,19 +95,16 @@ jobs:
         with:
           name: data-${{ steps.update.outputs.date }}
           path: |
-            site/tiles/*.pmtiles
-            site/data/*_timeline.json
-            site/data/*_areas.json
-            site/data/*_areas.geojson
-            site/data/*_spans.bin
-            data/*_versions.parquet
+            site/data/berlin/timeline.json
+            site/data/berlin/builds/${{ steps.update.outputs.build }}/
           retention-days: 30
 
       - name: Publish
         if: steps.update.outputs.changed == 'true' && (github.event_name == 'schedule' || inputs.publish)
         env:
-          GH_TOKEN: ${{ github.token }}
+          B2_APPLICATION_KEY_ID: ${{ secrets.B2_KEY_ID }}
+          B2_APPLICATION_KEY: ${{ secrets.B2_APPLICATION_KEY }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          scripts/publish_data.sh
+          uv tool install b2==4.7.0
+          export PATH="$(uv tool dir --bin):$PATH"
+          scripts/publish_b2.sh berlin

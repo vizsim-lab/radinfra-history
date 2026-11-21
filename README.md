@@ -28,17 +28,21 @@ data/snapshots/<date>.osm.pbf           the state of OSM at each date
   ▼
 data/classified/<date>.parquet          radinfra categories per way / side of a road
   │  pipeline/versions.py
-  ▼
-data/berlin_versions.parquet            every distinct version once, with a lifespan
+  ▼                                     one build: site/data/berlin/builds/<id>/
+versions.parquet                        every distinct version once, with a lifespan
   │  pipeline/areas.py (OSM boundaries)     │  manby (tippecanoe-compatible), MLT
   ▼                                         ▼
-site/data/berlin_areas.json             site/tiles/berlin_lo.pmtiles, berlin.pmtiles
+areas.json                              tiles_lo.pmtiles, tiles.pmtiles
   km per category, snapshot and area      z9–11 and z12–14, for all dates
-site/data/berlin_areas.geojson          site/data/berlin_spans.bin
+areas.geojson                           spans.bin
   Bezirke and Ortsteile                   the popup's dates, 6 bytes per version
-                                        site/data/berlin_timeline.json
+                                        timeline.json
                                           km per category and snapshot (whole extract)
 ```
+
+Every command from `versions` on makes a new build
+([pipeline/builds.py](pipeline/builds.py)); `site/data/berlin/timeline.json`
+points at the current one.
 
 **Classification.** [OSMnexus](https://github.com/rush42/OSMnexus) reimplements the
 radinfra.de classification from [tilda-geo](https://github.com/FixMyBerlin/tilda-geo)
@@ -89,7 +93,7 @@ of its category, which the popup shows instead of `f` and `t`:
 - `pc`, `nc` — the category in the snapshot before and after that run, if the
   object was drawn there
 
-These four are not in the tiles. `site/data/berlin_spans.bin` holds them as six
+These four are not in the tiles. The build's `spans.bin` holds them as six
 bytes per version at offset `vid × 6` (`cf`, `ct` as snapshot indices, `pc`, `nc`
 as indices into the timeline's `categories`), and a click reads its six bytes with
 one range request. Without them the detail tiles are about a seventh smaller.
@@ -199,6 +203,10 @@ uv run python -m pipeline all --osh berlin-internal.osh.pbf --start 2016-01-01 -
 uv run python scripts/serve.py         # http://127.0.0.1:8765
 ```
 
+To work on the page without building, `./scripts/fetch_data.sh` downloads the
+published build instead. Locally the page reads `site/data/`; with `?data=remote`
+it reads the bucket.
+
 Each step also runs on its own (`snapshots`, `classify`, `versions`, `areas`, `tiles`);
 classifications are reused unless `--force`. Instead of a history file, dated
 extracts work too, such as Geofabrik's yearly public `berlin-YYMMDD.osm.pbf`:
@@ -219,25 +227,32 @@ classify.
 
 ## Publishing
 
-The built data — tiles, popup file, timeline, areas — is not committed to `main`.
-It lives on the `data` branch as a single commit that is replaced on every
-publish, so old tilesets do not pile up in the history. The branch also keeps
-`berlin_versions.parquet`, the state the [updates](#updates) continue from:
+GitHub Pages serves the page only
+([.github/workflows/pages.yml](.github/workflows/pages.yml)). The data is in the
+public B2 bucket `radinfra-history`, behind Cloudflare at
+`https://tiles.vizsim.de/file/radinfra-history/`, in the same layout as
+`site/data/`:
 
-```bash
-./scripts/publish_data.sh             # force-pushes `data`, then starts the Pages workflow
-NO_DEPLOY=1 ./scripts/publish_data.sh # only `data`: the next push to main deploys both
+```
+berlin/timeline.json              Cache-Control: no-cache — names the current build
+berlin/builds/<id>/…              Cache-Control: public, max-age=31536000, immutable
 ```
 
-[.github/workflows/pages.yml](.github/workflows/pages.yml) copies the data next to
-the page and deploys `site/` to GitHub Pages, on one origin with the page. The
-files of one build carry its id in their URLs (`?v=`, the start of the versions
-file's MD5, written to the timeline as `build`), so a browser never combines tiles
-and popup dates of two builds; the JSON files are revalidated on every load. For
-Germany as a whole the archives will outgrow GitHub; then the tiles move to object
-storage (B2) with a CORS rule that allows `Range`, and only the URLs in
-[site/config.js](site/config.js) change. `scripts/fetch_data.sh` puts the
-published data into `site/` and `data/` for local work.
+A build's id is a hash of all its files, so a path always means the same bytes:
+browsers and Cloudflare may keep them for good, and a page never combines tiles
+and popup dates of two builds. The build also holds `versions.parquet`, the state
+the [updates](#updates) continue from; the page never loads it.
+
+```bash
+./scripts/publish_b2.sh berlin        # the build, then the timeline; old builds deleted
+./scripts/fetch_data.sh berlin        # the published build into site/data/berlin/
+```
+
+`publish_b2.sh` takes the key from `B2_APPLICATION_KEY_ID` and
+`B2_APPLICATION_KEY`, or from `.env` (never committed), and keeps the current
+build and the one before it. The bucket has a CORS rule for
+`b2_download_file_by_name` with `Range`, and keeps only the newest version of a
+file.
 
 ## Updates
 
@@ -245,8 +260,8 @@ published data into `site/` and `data/` for local work.
 of OSM on the 2nd of January, April, July and October: Geofabrik's public
 `berlin-latest.osm.pbf`, which has no personal metadata, dated by its replication
 timestamp. It is classified like every snapshot before it and appended to the
-versions from the `data` branch; areas, tiles and popup file are rebuilt, and the
-result is published. The history file is not needed again.
+versions of the published build; areas, tiles and popup file are rebuilt, and the
+new build is published. The history file is not needed again.
 
 ```bash
 uv run python -m pipeline update --pbf berlin-latest.osm.pbf   # the same, by hand

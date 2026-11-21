@@ -121,10 +121,7 @@ def test_append_matches_full_build(history, tmp_path, monkeypatch, start, per_di
         append_snapshot(inc, inc_timeline, path, d)
 
     assert content_of(inc) == content_of(full)
-    # The build id names the file, which is numbered differently; the rest is the same.
-    inc_json, full_json = json.loads(inc_timeline.read_text()), json.loads(full_timeline.read_text())
-    assert inc_json.pop("build") != full_json.pop("build")
-    assert inc_json == full_json
+    assert json.loads(inc_timeline.read_text()) == json.loads(full_timeline.read_text())
     # Versions keep their numbers; new ones are numbered on.
     after = set(duckdb.connect().execute(f"SELECT vid, id, k0 FROM read_parquet('{inc}')").fetchall())
     assert set(before) <= after

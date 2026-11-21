@@ -4,13 +4,9 @@
 *.osh.pbf
 *.osm.pbf
 
-# Build output. Published on the `data` branch (scripts/publish_data.sh), not on
-# main, so the repository does not grow by a tileset on every rebuild.
-site/tiles/*.pmtiles
-site/data/*_timeline.json
-site/data/*_areas.json
-site/data/*_areas.geojson
-site/data/*_spans.bin
+# Builds, one folder per region (pipeline/builds.py). Published in the B2 bucket
+# (scripts/publish_b2.sh), not in the repository.
+site/data/*/
 
 # Pinned external tools (scripts/fetch_osmnexus.sh)
 .tools/
@@ -20,3 +16,8 @@ site/data/*_spans.bin
 __pycache__/
 *.pyc
 .pytest_cache/
+
+.env
+
+# Working notes, local only
+masterplan-deutschland.md

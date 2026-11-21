@@ -24,7 +24,6 @@ Alongside, km per legend row and snapshot go to a small JSON for the timeline:
 the length of each side of a road and each way of its own (COUNT_DIRECTIONS).
 """
 
-import hashlib
 import json
 import struct
 from datetime import date
@@ -202,8 +201,7 @@ def build_versions(classified, out_parquet, timeline_json, region=None):
         ) TO '{out_parquet}' (FORMAT parquet, COMPRESSION zstd)
     """)
 
-    timeline = _timeline(dates, keys, category, k0, k1, counted_m(length, dirs), region,
-                         _build_id(out_parquet))
+    timeline = _timeline(dates, keys, category, k0, k1, counted_m(length, dirs), region)
     _write_json(timeline_json, timeline)
 
     n_versions = len(vid)
@@ -305,8 +303,7 @@ def append_snapshot(versions_parquet, timeline_json, classified, snapshot_date):
     ).fetchnumpy().values()
     tmp.replace(versions_parquet)
 
-    timeline = _timeline(dates, keys, category, k0, k1, counted_m(length, dirs), timeline.get("region"),
-                         _build_id(versions_parquet))
+    timeline = _timeline(dates, keys, category, k0, k1, counted_m(length, dirs), timeline.get("region"))
     _write_json(timeline_json, timeline)
     # Why versions end, for the log of the unattended update: a jump in one reason
     # (say, geometry from a differently cut extract) is easy to spot there.
@@ -367,13 +364,7 @@ def _write_json(path, data):
     path.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
 
 
-def _build_id(versions_parquet):
-    """Names one build of the data: the page puts it into the URLs of the tiles and
-    the popup file, so a browser never mixes files from two builds."""
-    return hashlib.md5(Path(versions_parquet).read_bytes()).hexdigest()[:12]
-
-
-def _timeline(dates, keys, category, k0, k1, length, region, build):
+def _timeline(dates, keys, category, k0, k1, length, region):
     """km per legend row and snapshot, by a difference array over each lifespan.
     `length` is what each version counts, in metres (counted_m)."""
     n = len(dates)
@@ -402,7 +393,6 @@ def _timeline(dates, keys, category, k0, k1, length, region, build):
     return {
         "region": region,
         "built": date.today().isoformat(),
-        "build": build,
         "unit": "km je Fahrtrichtung" if COUNT_DIRECTIONS else "km je Straßenseite und Weg",
         # Category codes of the popup file (write_spans), in this order.
         "categories": sorted(drawn_categories()),

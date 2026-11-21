@@ -1,13 +1,6 @@
-# Publishes site/ on GitHub Pages, together with the tiles and the timeline.
-#
-# The built data is not committed to main: it lives on the `data` branch as a
-# single commit that scripts/publish_data.sh replaces, so the repository does not
-# grow by a tileset on every rebuild. This workflow puts the files next to the
-# page before uploading it, which keeps tiles and page on one origin — no CORS,
-# and Pages answers the Range requests PMTiles makes.
-#
-# A push to `data` cannot start this workflow (that branch has no workflow
-# files), so publish_data.sh starts it explicitly.
+# Publishes site/ on GitHub Pages: the page only. Its data (timeline, tiles, popup
+# file, areas) is in the B2 bucket radinfra-history (scripts/publish_b2.sh), so a
+# new build of the data needs no deploy here.
 name: Pages
 
 on:
@@ -33,22 +26,6 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v5
-
-      - name: Fetch the built data from the data branch
-        uses: actions/checkout@v5
-        with:
-          ref: data
-          path: _data
-
-      - name: Put them next to the page
-        run: |
-          mkdir -p site/tiles site/data
-          cp _data/*.pmtiles site/tiles/
-          cp _data/*_timeline.json site/data/
-          cp _data/*_areas.json _data/*_areas.geojson site/data/ 2>/dev/null || echo "no area data yet"
-          cp _data/*_spans.bin site/data/ 2>/dev/null || echo "no popup file yet"
-          ls -l site/tiles site/data
-
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

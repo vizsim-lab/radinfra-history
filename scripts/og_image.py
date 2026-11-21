@@ -3,7 +3,7 @@
 Berlin's cycling infrastructure in OSM at the newest snapshot, in radinfra.de's
 colours and drawing order, inside the state boundary, next to the wordmark. Drawn
 as SVG and rasterised with rsvg-convert (librsvg); the text is set in Inter, as
-in the logo. Run it after a build, which leaves the versions and the areas:
+in the logo. Run it after a build, or after scripts/fetch_data.sh:
 
     uv run python scripts/og_image.py
 """
@@ -21,11 +21,10 @@ import shapely
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+from pipeline.builds import Region  # noqa: E402
 from pipeline.style import legend_groups  # noqa: E402
 
-VERSIONS = ROOT / "data" / "berlin_versions.parquet"
-TIMELINE = ROOT / "site" / "data" / "berlin_timeline.json"
-AREAS = ROOT / "site" / "data" / "berlin_areas.geojson"
+REGION = Region(ROOT / "site" / "data" / "berlin")
 WORDMARK = ROOT / "site" / "logo-wordmark-light.svg"
 OUT = ROOT / "site" / "og.png"
 
@@ -67,15 +66,16 @@ def path_data(geoms):
 
 
 def main():
-    timeline = json.loads(TIMELINE.read_text(encoding="utf-8"))
+    build = REGION.build_dir(REGION.check())
+    timeline = json.loads((build / "timeline.json").read_text(encoding="utf-8"))
     newest = timeline["snapshots"][-1]["key"]
-    berlin = next(f for f in json.loads(AREAS.read_text(encoding="utf-8"))["features"]
+    berlin = next(f for f in json.loads((build / "areas.geojson").read_text(encoding="utf-8"))["features"]
                   if f["properties"]["slug"] == "berlin")
     city = shapely.geometry.shape(berlin["geometry"])
     project = projector(shapely.bounds(city))
 
     category, wkb = duckdb.connect().execute(
-        f"SELECT category, geometry::BLOB FROM read_parquet('{VERSIONS}') WHERE f <= {newest} AND t > {newest}"
+        f"SELECT category, geometry::BLOB FROM read_parquet('{build / "versions.parquet"}') WHERE f <= {newest} AND t > {newest}"
     ).fetchnumpy().values()
     lines = shapely.from_wkb(np.asarray([bytes(b) for b in wkb], dtype=object))
     shapely.prepare(city)

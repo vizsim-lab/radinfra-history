@@ -1,6 +1,4 @@
 import {
-    AREAS_GEOJSON_URL,
-    AREAS_URL,
     ATTRIBUTION,
     BASEMAP_ATTRIBUTION,
     BASEMAP_STYLE,
@@ -25,6 +23,8 @@ import {
     TIMELINE_NOTES,
     TIMELINE_URL,
     URL_DEBOUNCE_MS,
+    areasGeojsonURL,
+    areasURL,
     groupLabel,
     hoverStyle,
     initialMapConfig,
@@ -90,8 +90,8 @@ function keyToIso(key) {
     return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
 }
 
-// `fresh`: ask the server every time (a cheap 304 if unchanged). For the files of
-// one build, whose `build` id the tile and popup URLs then carry.
+// `fresh`: ask the server every time (a cheap 304 if unchanged). For the timeline,
+// which names the current build; the build's own files never change.
 async function fetchJSON(url, { fresh = false } = {}) {
     const response = await fetch(url, fresh ? { cache: 'no-cache' } : undefined);
     if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
@@ -423,13 +423,17 @@ async function main() {
     const protocol = new pmtiles.Protocol();
     maplibregl.addProtocol('pmtiles', protocol.tile);
 
-    const [timeline, style, basemap, imageryList, areasData, areasGeojson] = await Promise.all([
-        fetchJSON(TIMELINE_URL, { fresh: true }),
+    const timelineLoaded = fetchJSON(TIMELINE_URL, { fresh: true });
+    const areasLoaded = timelineLoaded.then(({ build }) => Promise.all([
+        optionalJSON(areasURL(build), 'area statistics'),
+        optionalJSON(areasGeojsonURL(build), 'area boundaries'),
+    ]));
+    const [timeline, style, basemap, imageryList, [areasData, areasGeojson]] = await Promise.all([
+        timelineLoaded,
         fetchJSON(STYLE_URL),
         basemapStyle(BASEMAP_STYLE),
         optionalJSON(IMAGERY_URL, 'imagery list'),
-        optionalJSON(AREAS_URL, 'area statistics', { fresh: true }),
-        optionalJSON(AREAS_GEOJSON_URL, 'area boundaries', { fresh: true }),
+        areasLoaded,
     ]);
     const { snapshots, build } = timeline;
     const readSpan = createSpanReader(spansURL(build), timeline);
