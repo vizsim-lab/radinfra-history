@@ -45,17 +45,16 @@ export function search(entries, query, max = MAX) {
 
 export function createAreaSearch(input, results, areas, { onPick }) {
     const entries = areas.list.map(entryFor);
-    const sameName = new Map();
-    for (const e of entries) sameName.set(e.forms[0], (sameName.get(e.forms[0]) ?? 0) + 1);
     let shown = [];
     let active = -1;
 
     const label = (area) => (area === areas.top ? `${area.name} gesamt` : area.name);
+    // Level, then where it lies, up to the region: "Gemeinde · Landkreis Hof, Bayern".
     function where(area) {
-        const parent = area.parent ? areas.get(area.parent) : null;
-        const shared = sameName.get(fold(area.name)) > 1;
-        return [area.level, parent && (shared || area.level !== 'Land') ? parent.name : null]
-            .filter(Boolean).join(' · ');
+        const above = [];
+        for (let a = area.parent ? areas.get(area.parent) : null; a && a !== areas.top;
+            a = a.parent ? areas.get(a.parent) : null) above.push(a.name);
+        return [area.level, above.join(', ')].filter(Boolean).join(' · ');
     }
 
     function browse() {
