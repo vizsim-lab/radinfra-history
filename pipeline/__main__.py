@@ -107,7 +107,7 @@ def main():
                         help="--osh: keep every snapshot, not just the newest")
     parser.add_argument("--force", action="store_true", help="reclassify even if results exist")
     parser.add_argument("--boundaries-pbf", type=Path,
-                        help="snapshot to take Bezirk/Ortsteil boundaries from (default: newest in --snapshot-dir)")
+                        help="snapshot to take the area boundaries from (default: newest in --snapshot-dir)")
     parser.add_argument("--minzoom", type=int, default=9)
     parser.add_argument("--maxzoom", type=int, default=14)
     args = parser.parse_args()
@@ -147,7 +147,8 @@ def main():
         print("[areas]", flush=True)
         boundaries = args.boundaries_pbf or max(
             Path(args.snapshot_dir).glob("*.osm.pbf"), key=snaps.date_from_filename)
-        build_areas(boundaries, versions_path, timeline_path, work / "areas.json", work / "areas.geojson")
+        build_areas(boundaries, versions_path, timeline_path, work / "areas.json", work / "areas.geojson",
+                    region=args.spec)
 
     if args.command in ("all", "tiles"):
         print("[tiles]", flush=True)
@@ -214,7 +215,8 @@ def _update(args, region):
           + (f"{edited:,} of them edited in OSM since {last}" if edited is not None
              else "the extract has no timestamps to check them"), flush=True)
     print("[areas]", flush=True)
-    build_areas(pbf, versions_path, timeline_path, work / "areas.json", work / "areas.geojson", keep=keep_areas)
+    build_areas(pbf, versions_path, timeline_path, work / "areas.json", work / "areas.geojson",
+                region=args.spec, keep=keep_areas)
     print("[tiles]", flush=True)
     build_tiles(versions_path, work / "tiles.pmtiles", args.minzoom, args.maxzoom)
     build = region.finish()

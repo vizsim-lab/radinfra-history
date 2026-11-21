@@ -3,7 +3,7 @@
 import pytest
 import shapely
 
-from pipeline.areas import area_km2, slugify
+from pipeline.areas import area_km2, select_areas, slugify
 from pipeline.versions import geometry_lengths_m
 
 
@@ -39,3 +39,76 @@ def test_area_km2_of_a_known_box():
     dlat = 1 / 110.574
     box = shapely.box(13.4, lat - dlat / 2, 13.4 + dlon, lat + dlat / 2)
     assert area_km2(box) == pytest.approx(1.0, rel=1e-3)
+
+
+def boundary(relation, level, name, box):
+    return (f"a{2 * relation + 1}", {"admin_level": level, "name": name}, shapely.box(*box))
+
+
+# A country of two Länder, one a city (Berlin-like) with a Bezirk of two Ortsteile.
+COUNTRY = [
+    boundary(1, "2", "Testland", (0, 0, 20, 10)),
+    boundary(2, "4", "Nordland", (0, 0, 10, 10)),
+    boundary(3, "4", "Stadt", (10, 0, 20, 10)),
+    boundary(4, "6", "Kreis Nord", (0, 0, 10, 10)),
+    boundary(5, "8", "Lichtenberg", (0, 0, 5, 10)),
+    boundary(6, "8", "Wiesenau", (5, 0, 10, 10)),
+    boundary(7, "9", "Lichtenberg", (10, 0, 20, 10)),
+    boundary(8, "10", "Lichtenberg", (10, 0, 15, 10)),
+    boundary(9, "10", "Mitte", (15, 0, 20, 10)),
+    boundary(10, "8", "Draußen", (30, 0, 40, 10)),   # outside the country
+]
+
+
+def test_select_areas_levels_and_parents():
+    areas, _ = select_areas(COUNTRY, 1, ("4", "6", "8"), nested=(("stadt", ("9", "10")),))
+    by = {a["name"] + "/" + a["level"]: a for a in areas}
+    assert areas[0]["slug"] == "testland" and areas[0]["level"] == "Staat"
+    assert "Draußen/Gemeinde" not in by
+    assert by["Nordland/Land"]["parent"] == "testland"
+    assert by["Kreis Nord/Kreis"]["parent"] == "nordland"
+    assert by["Wiesenau/Gemeinde"]["parent"] == "kreis-nord"
+    assert by["Lichtenberg/Bezirk"]["parent"] == "stadt"
+    assert by["Mitte/Ortsteil"]["parent"] == by["Lichtenberg/Bezirk"]["slug"]
+
+
+def test_shared_names_get_their_parent():
+    """A Gemeinde and an Ortsteil both called Lichtenberg, at the same depth: both
+    get their parent's slug; the Ortsteil keeps its own region's slug as an alias."""
+    areas, aliases = select_areas(COUNTRY, 1, ("4", "6", "8"), nested=(("stadt", ("9", "10")),))
+    slugs = {a["name"] + "/" + a["level"]: a["slug"] for a in areas}
+    assert slugs["Lichtenberg/Gemeinde"] == "lichtenberg-kreis-nord"
+    assert slugs["Lichtenberg/Ortsteil"] == "lichtenberg-bezirk-lichtenberg"
+    assert slugs["Lichtenberg/Bezirk"] == "bezirk-lichtenberg"
+    assert slugs["Wiesenau/Gemeinde"] == "wiesenau"
+    assert aliases == {"lichtenberg": "lichtenberg-bezirk-lichtenberg"}
+
+
+def test_the_higher_area_keeps_a_shared_name():
+    """Land Bremen and the Stadt Bremen below it."""
+    boundaries = [
+        boundary(1, "2", "Testland", (0, 0, 20, 10)),
+        boundary(2, "4", "Bremen", (0, 0, 10, 10)),
+        boundary(3, "6", "Bremen", (0, 0, 5, 10)),
+    ]
+    areas, aliases = select_areas(boundaries, 1, ("4", "6"))
+    assert [a["slug"] for a in areas] == ["testland", "bremen", "bremen-bremen"]
+    assert aliases == {}
+
+
+def test_a_city_region_as_berlin_has_it():
+    """Berlin's own build: the Land on top, Bezirke `bezirk-…`, Ortsteile by name."""
+    city = [b for b in COUNTRY if b[1]["admin_level"] in ("4", "9", "10")]
+    areas, aliases = select_areas(city, 3, ("9", "10"))
+    assert [(a["slug"], a["level"], a["parent"]) for a in areas] == [
+        ("stadt", "Land", None),
+        ("bezirk-lichtenberg", "Bezirk", "stadt"),
+        ("lichtenberg", "Ortsteil", "bezirk-lichtenberg"),
+        ("mitte", "Ortsteil", "bezirk-lichtenberg"),
+    ]
+    assert aliases == {}
+
+
+def test_the_region_must_be_there():
+    with pytest.raises(SystemExit, match="relation 99"):
+        select_areas(COUNTRY, 99, ("4",))

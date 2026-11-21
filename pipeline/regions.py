@@ -16,6 +16,10 @@ class Region:
     name: str           # in the timeline
     relation: int       # the region's own boundary in OSM
     extract: str        # Geofabrik's public extract for the quarterly updates
+    # Admin levels of the areas inside the region, top down (pipeline/areas.py).
+    levels: tuple = ()
+    # More levels inside one of those areas: ((slug, levels), ...).
+    nested: tuple = ()
     # The area the snapshots cover, for builds from before the timeline kept it
     # (`coverage`, from the history file's header): an update extract must cover it.
     coverage: tuple = None
@@ -26,11 +30,16 @@ class Region:
 
 
 REGIONS = {r.slug: r for r in (
+    # Bezirke and Ortsteile.
     Region("berlin", "Berlin", 62422, "europe/germany/berlin/berlin-latest.osm.pbf",
-           coverage=(13.08283, 52.33446, 13.762245, 52.6783)),
-    Region("germany", "Deutschland", 51477, "europe/germany/germany-latest.osm.pbf"),
+           levels=("9", "10"), coverage=(13.08283, 52.33446, 13.762245, 52.6783)),
+    # Länder, Kreise and kreisfreie Städte, Gemeinden; in Berlin its Bezirke and
+    # Ortsteile, with the slugs they have in Berlin's own build.
+    Region("germany", "Deutschland", 51477, "europe/germany/germany-latest.osm.pbf",
+           levels=("4", "6", "8"), nested=(("berlin", ("9", "10")),)),
     # Small, for trying things out: 6 Kreise, 52 Gemeinden.
-    Region("saarland", "Saarland", 62372, "europe/germany/saarland/saarland-latest.osm.pbf"),
+    Region("saarland", "Saarland", 62372, "europe/germany/saarland/saarland-latest.osm.pbf",
+           levels=("6", "8")),
 )}
 
 
