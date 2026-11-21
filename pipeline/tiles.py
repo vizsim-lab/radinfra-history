@@ -14,6 +14,7 @@ No feature is dropped at any zoom. tippecanoe's usual size control
 vanish at one date and come back at the next while scrubbing.
 """
 
+import os
 from pathlib import Path
 
 from . import tools
@@ -49,8 +50,13 @@ def overview_path(out_pmtiles):
 
 
 def _manby(out, layer, minzoom, maxzoom, attributes, extra, source):
+    """Run in the output's folder, as plain `manby` with relative names: manby
+    writes its command line into the archive (generator_options), and so the
+    archive does not depend on where it was built or name a local path."""
+    out = Path(out)
+    here = out.parent
     cmd = [
-        tools.manby(), "-o", out, "--force", "-l", layer,
+        "manby", "-o", out.name, "--force", "-l", layer,
         "-Z", str(minzoom), "-z", str(maxzoom),
         # Base zoom at the minimum: nothing is thinned out below it either.
         "-B", str(minzoom),
@@ -61,8 +67,8 @@ def _manby(out, layer, minzoom, maxzoom, attributes, extra, source):
     ]
     for attribute in attributes:
         cmd += ["-y", attribute]
-    cmd.append(source)
-    tools.run(cmd)
+    cmd.append(os.path.relpath(source, here))
+    tools.run(cmd, cwd=here, executable=tools.manby())
 
 
 def build_tiles(versions_parquet, out_pmtiles, minzoom=9, maxzoom=14):
