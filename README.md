@@ -212,7 +212,10 @@ classifications are reused unless `--force`. From a history file, `all` and
 `classify` cut one snapshot at a time, classify it and delete it again (all but the
 newest, for the area boundaries; `--keep-snapshots` keeps them), so a run that
 stops carries on where it was when started again. `--jobs N` works on N snapshots
-at once; memory is the limit. Instead of a history file, dated
+at once; memory is the limit. `--region` picks one of the regions in
+[pipeline/regions.py](pipeline/regions.py) (default `berlin`); each has its own
+folders in `data/` and `site/data/`, and its timeline keeps the bounding box of the
+history file, which an update's extract has to cover. Instead of a history file, dated
 extracts work too, such as Geofabrik's yearly public `berlin-YYMMDD.osm.pbf`:
 
 ```bash

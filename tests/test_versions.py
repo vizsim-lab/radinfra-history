@@ -288,3 +288,15 @@ def test_edited_since(tmp_path):
     bare = tmp_path / "bare.osm.pbf"
     subprocess.run(["osmium", "cat", pbf, "-o", bare, "-f", "pbf,add_metadata=false"], check=True)
     assert snapshots.edited_since(bare, [1, 2], since) is None
+
+
+def test_coverage_stays_with_the_timeline(history, tmp_path):
+    """The area the snapshots cover, for the updates to check their extract against."""
+    out, timeline = tmp_path / "v.parquet", tmp_path / "t.json"
+    build_versions(history[:2], out, timeline, coverage=(13.0, 52.3, 13.8, 52.7))
+    assert json.loads(timeline.read_text())["coverage"] == [13.0, 52.3, 13.8, 52.7]
+    for d, path in history[2:]:
+        append_snapshot(out, timeline, path, d)
+    assert json.loads(timeline.read_text())["coverage"] == [13.0, 52.3, 13.8, 52.7]
+    build_versions(history, out, timeline)
+    assert "coverage" not in json.loads(timeline.read_text())

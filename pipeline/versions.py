@@ -25,7 +25,9 @@ the length of each side of a road and each way of its own (COUNT_DIRECTIONS).
 """
 
 import json
+import os
 import struct
+import tempfile
 from datetime import date
 from pathlib import Path
 
@@ -47,6 +49,25 @@ EARTH_RADIUS_M = 6_371_008.8
 # per side of the road and per way, which redrawing a cycleway leaves alone. The
 # switch changes only the km, not the versions or the tiles.
 COUNT_DIRECTIONS = False
+
+
+# Versions whose lengths are computed at once: bounds the memory shapely needs.
+LENGTH_CHUNK = 500_000
+
+
+def _connect():
+    """DuckDB with a memory cap and a folder to spill to, for Germany's 46 snapshots
+    together. RADINFRA_DUCKDB_MEMORY (e.g. 24GiB; default half the RAM) and
+    RADINFRA_DUCKDB_TEMP change them."""
+    con = duckdb.connect()
+    memory = os.environ.get("RADINFRA_DUCKDB_MEMORY")
+    if not memory:
+        total = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+        memory = f"{max(total / 2 / 2**30, 1):.0f}GiB"
+    temp = os.environ.get("RADINFRA_DUCKDB_TEMP") or str(Path(tempfile.gettempdir()) / "radinfra-duckdb")
+    con.execute(f"SET memory_limit = '{memory}'")
+    con.execute(f"SET temp_directory = '{temp}'")
+    return con
 
 
 def counted_m(length_m, dirs):
@@ -91,8 +112,10 @@ def geometry_lengths_m(geoms):
     return np.bincount(part_index, weights=per_part, minlength=len(geoms))
 
 
-def build_versions(classified, out_parquet, timeline_json, region=None):
-    """classified: [(date, parquet)] oldest first. Writes versions + timeline."""
+def build_versions(classified, out_parquet, timeline_json, region=None, coverage=None):
+    """classified: [(date, parquet)] oldest first. Writes versions + timeline.
+    `coverage`: the bounding box the snapshots cover, kept in the timeline for the
+    updates to check their extract against."""
     classified = sorted(classified)
     dates = [d for d, _ in classified]
     if len(set(dates)) != len(dates):
@@ -101,7 +124,7 @@ def build_versions(classified, out_parquet, timeline_json, region=None):
     out_parquet = Path(out_parquet)
     out_parquet.parent.mkdir(parents=True, exist_ok=True)
 
-    con = duckdb.connect()
+    con = _connect()
     con.execute("CREATE TEMP TABLE snaps (k INTEGER, date INTEGER)")
     con.executemany("INSERT INTO snaps VALUES (?, ?)", list(enumerate(keys)))
     con.execute("CREATE TEMP TABLE drawn (category VARCHAR)")
@@ -109,11 +132,14 @@ def build_versions(classified, out_parquet, timeline_json, region=None):
 
     files = [str(p) for _, p in classified]
     # Categories the radinfra style does not draw (cyclewayLink) are left out of
-    # the tiles and the counts, like on radinfra.de's own map.
+    # the tiles and the counts, like on radinfra.de's own map. Every object in
+    # every snapshot, but with a hash for its geometry: the geometries themselves
+    # are fetched once per version at the end (`shapes`), which keeps this table a
+    # fraction of the snapshots' size.
     con.execute("""
         CREATE TEMP TABLE obs AS
         SELECT s.k, c.id, c.osm_id, c.category, c.side, c.name, c.dirs,
-               md5(c.geometry::BLOB) AS gh, c.geometry
+               md5_number(c.geometry::BLOB) AS gh
         FROM read_parquet(?) c
         JOIN snaps s USING (date)
         WHERE c.category IN (SELECT category FROM drawn)
@@ -131,15 +157,14 @@ def build_versions(classified, out_parquet, timeline_json, region=None):
         ), runs AS (
             SELECT id, category, gh, name, dirs,
                    min(k) AS k0, max(k) AS k1,
-                   any_value(osm_id) AS osm_id, any_value(side) AS side,
-                   any_value(geometry) AS geometry
+                   any_value(osm_id) AS osm_id, any_value(side) AS side
             FROM islands
             GROUP BY id, category, gh, name, dirs, island
         )
         SELECT row_number() OVER (ORDER BY r.id, r.k0)::INTEGER AS vid,
                r.id, r.osm_id, r.category, r.side, r.name, r.dirs,
                sf.date AS f, coalesce(st.date, {OPEN_END}) AS t,
-               r.k0, r.k1, r.geometry
+               r.k0, r.k1
         FROM runs r
         JOIN snaps sf ON sf.k = r.k0
         LEFT JOIN snaps st ON st.k = r.k1 + 1
@@ -181,27 +206,42 @@ def build_versions(classified, out_parquet, timeline_json, region=None):
     if not n_spans == n_distinct == n_all:
         raise SystemExit(f"category spans: {n_spans} rows, {n_distinct} versions, expected {n_all}")
 
-    vid, category, k0, k1, dirs, wkb = con.execute(
-        "SELECT vid, category, k0, k1, dirs, geometry::BLOB FROM versions ORDER BY vid"
-    ).fetchnumpy().values()
+    # Each version's geometry, from its first snapshot (the same throughout: the
+    # hash is part of what makes a version).
+    con.execute("""
+        CREATE TEMP TABLE shapes AS
+        SELECT v.vid, c.geometry
+        FROM versions v JOIN read_parquet(?) c ON c.id = v.id AND c.date = v.f
+    """, [files])
+    n_shapes = con.execute("SELECT count(*) FROM shapes").fetchone()[0]
+    if n_shapes != n_all:
+        raise SystemExit(f"geometries: {n_shapes} for {n_all} versions")
+
     # Rounded as stored, so the timeline sums what the file holds (and what an
     # appended snapshot later sums again).
-    length = lengths_m(wkb).round(1)
     con.execute("CREATE TEMP TABLE lengths (vid INTEGER, length_m DOUBLE)")
-    con.execute("INSERT INTO lengths SELECT * FROM (SELECT unnest(?) AS vid, unnest(?) AS length_m)",
-                [vid.tolist(), length.tolist()])
+    for first in range(1, n_all + 1, LENGTH_CHUNK):
+        vid, wkb = con.execute(
+            "SELECT vid, geometry::BLOB FROM shapes WHERE vid >= ? AND vid < ? ORDER BY vid",
+            [first, first + LENGTH_CHUNK],
+        ).fetchnumpy().values()
+        con.execute("INSERT INTO lengths SELECT * FROM (SELECT unnest(?) AS vid, unnest(?) AS length_m)",
+                    [vid.tolist(), lengths_m(wkb).round(1).tolist()])
 
     con.execute(f"""
         COPY (
             SELECT v.vid, v.id, v.osm_id, v.category, v.side, v.name, v.dirs, v.f, v.t,
                    s.cf, s.ct, s.pc, s.nc,
-                   v.k0, v.k1, l.length_m, v.geometry
-            FROM versions v JOIN lengths l USING (vid) JOIN spans s USING (vid)
+                   v.k0, v.k1, l.length_m, g.geometry
+            FROM versions v JOIN lengths l USING (vid) JOIN spans s USING (vid) JOIN shapes g USING (vid)
             ORDER BY v.vid
         ) TO '{out_parquet}' (FORMAT parquet, COMPRESSION zstd)
     """)
+    vid, category, k0, k1, dirs, length = con.execute(
+        "SELECT vid, category, k0, k1, dirs, length_m FROM versions JOIN lengths USING (vid) ORDER BY vid"
+    ).fetchnumpy().values()
 
-    timeline = _timeline(dates, keys, category, k0, k1, counted_m(length, dirs), region)
+    timeline = _timeline(dates, keys, category, k0, k1, counted_m(length, dirs), region, coverage)
     _write_json(timeline_json, timeline)
 
     n_versions = len(vid)
@@ -231,7 +271,7 @@ def append_snapshot(versions_parquet, timeline_json, classified, snapshot_date):
     keys = [date_key(d) for d in dates]
     kn, dn = len(dates) - 1, keys[-1]
 
-    con = duckdb.connect()
+    con = _connect()
     con.execute("CREATE TEMP TABLE drawn (category VARCHAR)")
     con.executemany("INSERT INTO drawn VALUES (?)", [[c] for c in sorted(drawn_categories())])
     con.execute("CREATE TEMP TABLE v AS SELECT * FROM read_parquet(?)", [str(versions_parquet)])
@@ -303,7 +343,8 @@ def append_snapshot(versions_parquet, timeline_json, classified, snapshot_date):
     ).fetchnumpy().values()
     tmp.replace(versions_parquet)
 
-    timeline = _timeline(dates, keys, category, k0, k1, counted_m(length, dirs), timeline.get("region"))
+    timeline = _timeline(dates, keys, category, k0, k1, counted_m(length, dirs), timeline.get("region"),
+                         timeline.get("coverage"))
     _write_json(timeline_json, timeline)
     # Why versions end, for the log of the unattended update: a jump in one reason
     # (say, geometry from a differently cut extract) is easy to spot there.
@@ -334,27 +375,43 @@ NO_SNAPSHOT = 0xFFFF
 NO_CATEGORY = 0xFF
 
 
+# The same record as a numpy type, to write millions of them at once.
+SPAN_DTYPE = np.dtype([("cf", "<u2"), ("ct", "<u2"), ("pc", "u1"), ("nc", "u1")])
+assert SPAN_DTYPE.itemsize == SPAN_RECORD.size
+
+
 def write_spans(versions_parquet, timeline_json, out_path):
     timeline = json.loads(Path(timeline_json).read_text(encoding="utf-8"))
-    index = {s["key"]: i for i, s in enumerate(timeline["snapshots"])}
-    codes = {c: i for i, c in enumerate(timeline["categories"])}
-    if len(index) >= NO_SNAPSHOT or len(codes) >= NO_CATEGORY:
+    keys = [s["key"] for s in timeline["snapshots"]]
+    categories = timeline["categories"]
+    if len(keys) >= NO_SNAPSHOT or len(categories) >= NO_CATEGORY:
         raise SystemExit("too many snapshots or categories for the popup file's records")
-    rows = duckdb.connect().execute(
-        f"SELECT vid, cf, ct, pc, nc FROM read_parquet('{versions_parquet}') ORDER BY vid"
-    ).fetchall()
-    buf = bytearray((rows[-1][0] + 1) * SPAN_RECORD.size if rows else 0)
-    for vid, cf, ct, pc, nc in rows:
-        SPAN_RECORD.pack_into(
-            buf, vid * SPAN_RECORD.size,
-            index[cf], NO_SNAPSHOT if ct == OPEN_END else index[ct],
-            codes[pc] if pc is not None else NO_CATEGORY,
-            codes[nc] if nc is not None else NO_CATEGORY,
-        )
+    con = duckdb.connect()
+    con.execute("CREATE TEMP TABLE snap_index AS SELECT unnest(?) AS key, generate_subscripts(?, 1) - 1 AS i",
+                [keys, keys])
+    con.execute("CREATE TEMP TABLE codes AS SELECT unnest(?) AS category, generate_subscripts(?, 1) - 1 AS i",
+                [categories, categories])
+    vid, cf, ct, pc, nc, unknown = con.execute(f"""
+        SELECT v.vid, sf.i, coalesce(st.i, {NO_SNAPSHOT}), coalesce(cp.i, {NO_CATEGORY}),
+               coalesce(cn.i, {NO_CATEGORY}),
+               (sf.i IS NULL OR (st.i IS NULL AND v.ct <> {OPEN_END})
+                OR (cp.i IS NULL AND v.pc IS NOT NULL) OR (cn.i IS NULL AND v.nc IS NOT NULL))
+        FROM read_parquet('{versions_parquet}') v
+        LEFT JOIN snap_index sf ON sf.key = v.cf
+        LEFT JOIN snap_index st ON st.key = v.ct
+        LEFT JOIN codes cp ON cp.category = v.pc
+        LEFT JOIN codes cn ON cn.category = v.nc
+        ORDER BY v.vid
+    """).fetchnumpy().values()
+    if len(vid) and np.asarray(unknown).any():
+        raise SystemExit(f"{versions_parquet}: spans with a snapshot or category the timeline does not have")
+    records = np.zeros(int(vid[-1]) + 1 if len(vid) else 0, dtype=SPAN_DTYPE)
+    for name, values in (("cf", cf), ("ct", ct), ("pc", pc), ("nc", nc)):
+        records[name][vid] = values
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_bytes(bytes(buf))
-    print(f"  {out_path}: {len(buf) / 1e6:.1f} MB", flush=True)
+    out_path.write_bytes(records.tobytes())
+    print(f"  {out_path}: {records.nbytes / 1e6:.1f} MB", flush=True)
     return out_path
 
 
@@ -364,7 +421,7 @@ def _write_json(path, data):
     path.write_text(json.dumps(data, ensure_ascii=False, indent=1) + "\n", encoding="utf-8")
 
 
-def _timeline(dates, keys, category, k0, k1, length, region):
+def _timeline(dates, keys, category, k0, k1, length, region, coverage=None):
     """km per legend row and snapshot, by a difference array over each lifespan.
     `length` is what each version counts, in metres (counted_m)."""
     n = len(dates)
@@ -390,8 +447,10 @@ def _timeline(dates, keys, category, k0, k1, length, region):
     np.add.at(alive, k1 + 1, -1)
     objects = np.cumsum(alive)[:n]
 
+    extra = {"coverage": [float(v) for v in coverage]} if coverage else {}
     return {
         "region": region,
+        **extra,
         "built": date.today().isoformat(),
         "unit": "km je Fahrtrichtung" if COUNT_DIRECTIONS else "km je Straßenseite und Weg",
         # Category codes of the popup file (write_spans), in this order.

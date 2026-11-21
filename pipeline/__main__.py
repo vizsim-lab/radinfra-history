@@ -20,6 +20,7 @@ from pathlib import Path
 
 import duckdb
 
+from . import regions
 from . import snapshots as snaps
 from .areas import build_areas
 from .builds import REQUIRED, Region
@@ -63,6 +64,17 @@ def _classified(args):
                             args.threads, args.jobs, args.force, keep)
 
 
+def _coverage(args, region):
+    """The area the snapshots cover: the history file's (or newest extract's) header,
+    else what the current build or the region says."""
+    source = args.osh or (max(_snapshot_files(args))[1] if args.pbf else None)
+    found = snaps.history_bbox(source) if source else None
+    if found is None and region.current():
+        found = json.loads((region.build_dir(region.current()) / "timeline.json")
+                           .read_text(encoding="utf-8")).get("coverage")
+    return found or args.spec.coverage
+
+
 def _existing_classified(directory):
     found = []
     for path in sorted(Path(directory).glob("*.parquet")):
@@ -83,8 +95,9 @@ def main():
     source.add_argument("--end", help="last regular snapshot date (default: end of the history file)")
     source.add_argument("--pbf", nargs="*", default=[], help="dated extracts instead of --osh (globs ok)")
     source.add_argument("--date", help="update: date of the extract (default: from its header)")
-    parser.add_argument("--region", default="Berlin")
-    parser.add_argument("--slug", default="berlin", help="the region's folder in site/data/ and in the bucket")
+    parser.add_argument("--region", "--slug", dest="region", default="berlin",
+                        help=f"one of {', '.join(regions.REGIONS)} (pipeline/regions.py): "
+                             "its folder in data/, site/data/ and the bucket")
     parser.add_argument("--snapshot-dir", type=Path, help="default data/<slug>/snapshots")
     parser.add_argument("--classified-dir", type=Path, help="default data/<slug>/classified")
     parser.add_argument("--threads", type=int, default=2, help="threads per OSMnexus run")
@@ -98,6 +111,8 @@ def main():
     parser.add_argument("--minzoom", type=int, default=9)
     parser.add_argument("--maxzoom", type=int, default=14)
     args = parser.parse_args()
+    args.spec = regions.get(args.region)
+    args.slug = args.spec.slug
     args.snapshot_dir = args.snapshot_dir or DATA / args.slug / "snapshots"
     args.classified_dir = args.classified_dir or DATA / args.slug / "classified"
     region = Region(SITE / "data" / args.slug)
@@ -125,7 +140,7 @@ def main():
     if args.command in ("all", "versions"):
         print("[versions]", flush=True)
         build_versions(classified or _existing_classified(args.classified_dir),
-                       versions_path, timeline_path, region=args.region)
+                       versions_path, timeline_path, region=args.spec.name, coverage=_coverage(args, region))
         write_spans(versions_path, timeline_path, work / "spans.bin")
 
     if args.command in ("all", "areas"):
@@ -170,7 +185,11 @@ def _update(args, region):
         _github_output(changed="false", date=snapshot_date.isoformat(), build=current)
         return
     print(f"[update] {pbf.name} from {snapshot_date}, after {last}", flush=True)
-    snaps.check_coverage(pbf)
+    coverage = json.loads((old / "timeline.json").read_text(encoding="utf-8")).get("coverage") or args.spec.coverage
+    if coverage:
+        snaps.check_coverage(pbf, coverage)
+    else:
+        print(f"  no coverage known for {args.slug}: not checked", flush=True)
 
     print("[classify]", flush=True)
     classified = classify_snapshot(snapshot_date, pbf, args.classified_dir / f"{snapshot_date.isoformat()}.parquet",
