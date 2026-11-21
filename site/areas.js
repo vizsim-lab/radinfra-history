@@ -1,9 +1,10 @@
-// Areas: Berlin, its Bezirke and Ortsteile (pipeline/areas.py).
+// Areas: the region and its administrative areas (pipeline/areas.py): for Berlin
+// its Bezirke and Ortsteile, for Germany Länder, Kreise and Gemeinden.
 //
 // Picking an area scopes every number on the page to it: legend, trend lines,
 // timeline, table and the change table. The map keeps drawing everything, but
 // dims what lies outside and outlines the area. An area can be picked from the
-// list or, for Ortsteile, by clicking on the map.
+// list or, for Ortsteile and Gemeinden, by clicking on the map.
 
 const SOURCE = 'areas';
 const MASK_SOURCE = 'area-mask';
@@ -15,6 +16,9 @@ const LAYERS = {
 };
 
 const WORLD = [[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]];
+
+// What a click on the map picks: the smallest areas there are.
+const PICKABLE = ['in', ['get', 'level'], ['literal', ['Ortsteil', 'Gemeinde']]];
 
 // The world with the area cut out, to dim everything around it.
 function maskFor(feature) {
@@ -30,7 +34,11 @@ function maskFor(feature) {
 export function createAreas(map, { data, geojson, beforeId = undefined, onSelect, onPicking = () => {} }) {
     const bySlug = new Map(data.areas.map((a) => [a.slug, a]));
     const featureBySlug = new Map(geojson.features.map((f) => [f.properties.slug, f]));
-    let current = bySlug.get('berlin') ?? data.areas[0];
+    // The region itself comes first; old slugs (Berlin's own, inside Germany) as aliases.
+    const top = data.areas[0];
+    const aliases = data.aliases ?? {};
+    const find = (slug) => bySlug.get(slug) ?? bySlug.get(aliases[slug]);
+    let current = top;
     let picking = false;
     let hovered = null;
 
@@ -51,7 +59,7 @@ export function createAreas(map, { data, geojson, beforeId = undefined, onSelect
     // Only while picking on the map: every Ortsteil, the hovered one tinted.
     map.addLayer({
         id: LAYERS.pickFill, type: 'fill', source: SOURCE,
-        filter: ['==', ['get', 'level'], 'Ortsteil'],
+        filter: PICKABLE,
         layout: { visibility: 'none' },
         paint: {
             'fill-color': '#174ed9',
@@ -60,7 +68,7 @@ export function createAreas(map, { data, geojson, beforeId = undefined, onSelect
     }, beforeId);
     map.addLayer({
         id: LAYERS.pickLine, type: 'line', source: SOURCE,
-        filter: ['==', ['get', 'level'], 'Ortsteil'],
+        filter: PICKABLE,
         layout: { visibility: 'none' },
         paint: { 'line-color': '#374151', 'line-width': 1, 'line-opacity': 0.6 },
     }, beforeId);
@@ -140,7 +148,7 @@ export function createAreas(map, { data, geojson, beforeId = undefined, onSelect
     });
 
     function select(slug, { fit = false } = {}) {
-        const area = bySlug.get(slug) ?? bySlug.get('berlin');
+        const area = find(slug) ?? top;
         if (area) show(area, { fit });
     }
 
@@ -153,6 +161,7 @@ export function createAreas(map, { data, geojson, beforeId = undefined, onSelect
         },
         select,
         setPicking,
+        top,
         byLevel: (level) => data.areas.filter((a) => a.level === level),
         get: (slug) => bySlug.get(slug),
     };

@@ -1,16 +1,20 @@
 // Configuration for the radinfra-history map.
 
-const REGION_SLUG = 'berlin';
-
 const base = new URL('./', window.location.href);
+const LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+const params = new URLSearchParams(window.location.search);
+
+// The region the page shows: Berlin. Locally ?region= shows another one built into
+// site/data/ (germany, saarland): a preview until the page is made for Germany.
+const asked = params.get('region');
+export const REGION_SLUG = LOCAL && asked && /^[a-z-]+$/.test(asked) ? asked : 'berlin';
 
 // The data is not on GitHub Pages but in the B2 bucket radinfra-history, behind
 // Cloudflare (scripts/publish_b2.sh). Locally scripts/serve.py serves the same
 // layout from site/data/, where the pipeline and scripts/fetch_data.sh put it;
 // ?data=remote there loads the bucket instead.
 const BUCKET_URL = 'https://tiles.vizsim.de/file/radinfra-history/';
-const LOCAL = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
-const REMOTE = !LOCAL || new URLSearchParams(window.location.search).get('data') === 'remote';
+const REMOTE = !LOCAL || params.get('data') === 'remote';
 export const DATA_BASE = new URL(`${REGION_SLUG}/`, REMOTE ? BUCKET_URL : new URL('data/', base)).href;
 
 // The one file that changes: it names the current build (pipeline/builds.py).
@@ -88,12 +92,14 @@ export const ATTRIBUTION = [
 export const DATA_ATTRIBUTION = `Klassifikation nach ${link('https://radinfra.de', 'radinfra.de')} · ${link('https://github.com/rush42/OSMnexus', 'OSMnexus')}`;
 export const BASEMAP_ATTRIBUTION = `${link('https://openfreemap.org', 'OpenFreeMap')} ${link('https://www.openmaptiles.org/', '© OpenMapTiles')}`;
 
-export const initialMapConfig = {
-    center: [13.4050, 52.5100],
-    zoom: 11,
-    minZoom: 9,
-    maxZoom: 18,
+// Where the map starts. Lines are drawn from z9 on; Germany can be zoomed out
+// further to find one's way.
+const VIEWS = {
+    berlin: { center: [13.4050, 52.5100], zoom: 11, minZoom: 9 },
+    germany: { center: [10.45, 51.16], zoom: 9, minZoom: 5 },
+    saarland: { center: [6.95, 49.38], zoom: 10, minZoom: 8 },
 };
+export const initialMapConfig = { ...(VIEWS[REGION_SLUG] ?? VIEWS.berlin), maxZoom: 18 };
 
 // Hover highlight, drawn as a wide blurred halo beneath the category lines so
 // their colour stays readable on top of it (as in vizsim/bikeneat).

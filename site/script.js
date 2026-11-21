@@ -386,12 +386,12 @@ function initialIndex(snapshots) {
 }
 
 // ?t= for the date (left out for the newest), ?area= for the area (left out for
-// Berlin as a whole), so a view can be shared.
-function writeStateToURL(snapshots, index, areaSlug) {
+// the region as a whole), so a view can be shared.
+function writeStateToURL(snapshots, index, areaSlug, topSlug) {
     const url = new URL(window.location.href);
     if (index === snapshots.length - 1) url.searchParams.delete('t');
     else url.searchParams.set('t', snapshots[index].date);
-    if (!areaSlug || areaSlug === 'berlin') url.searchParams.delete('area');
+    if (!areaSlug || areaSlug === topSlug) url.searchParams.delete('area');
     else url.searchParams.set('area', areaSlug);
     window.history.replaceState(window.history.state, '', url);
 }
@@ -527,7 +527,8 @@ async function main() {
         const playButton = document.getElementById('tl-play');
         const applier = createTimeApplier(map);
         let scope = extractScope(timeline);
-        const writeURL = debounce(() => writeStateToURL(snapshots, index, scope.area?.slug), URL_DEBOUNCE_MS);
+        const writeURL = debounce(() => writeStateToURL(snapshots, index, scope.area?.slug,
+            areasData?.areas[0]?.slug), URL_DEBOUNCE_MS);
         let playing = false;
         let playTimer = null;
         let changeFrom = () => 0;
@@ -597,12 +598,12 @@ async function main() {
                 }
             },
         }) : null;
-        const setSelectValue = areas ? fillAreaSelect(areas, (slug) => areas.select(slug, { fit: slug !== 'berlin' }))
+        const setSelectValue = areas ? fillAreaSelect(areas, (slug) => areas.select(slug, { fit: slug !== areas.top.slug }))
             : () => {};
         const pickButton = document.getElementById('area-pick');
         if (areas) {
             pickButton.addEventListener('click', () => areas.setPicking(!areas.picking));
-            areas.select(new URLSearchParams(window.location.search).get('area') ?? 'berlin',
+            areas.select(new URLSearchParams(window.location.search).get('area') ?? areas.top.slug,
                 { fit: Boolean(new URLSearchParams(window.location.search).get('area')) });
         } else {
             document.querySelector('.legend-section[data-section="area"]').hidden = true;
