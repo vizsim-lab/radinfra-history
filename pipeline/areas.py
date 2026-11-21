@@ -213,8 +213,13 @@ def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_json, out_geo
         k1 = cols["k1"].astype(np.int64)
 
         # Every (line, area) pair that touches; a line inside counts whole, one that
-        # crosses the boundary only with its part inside.
-        line_i, area_i = tree.query(lines, predicate="intersects")
+        # crosses the boundary only with its part inside. The tree only finds the
+        # candidates by their boxes: its own predicate test prepares the line, not the
+        # area, and then walks all of Germany's or a Land's boundary for every line.
+        # Tested with the prepared area first, the result is the same pairs.
+        line_i, area_i = tree.query(lines)
+        touch = shapely.intersects(polygons[area_i], lines[line_i])
+        line_i, area_i = line_i[touch], area_i[touch]
         inside = shapely.contains_properly(polygons[area_i], lines[line_i])
         length = np.where(inside, cols["length_m"][line_i], 0.0)
         crossing = ~inside
