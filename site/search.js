@@ -8,26 +8,34 @@ const MAX = 12;
 // Higher levels first among equal matches: "Berlin" the Land before a Berlin street.
 const RANK = { Staat: 0, Land: 1, Kreis: 2, Bezirk: 3, Gemeinde: 4, Ortsteil: 5 };
 
-// Case, umlauts and accents do not matter: "muenchen", "München" and "munchen" find it.
+// Case, umlauts and accents do not matter: "München", "muenchen" and "munchen" all
+// find it. Two forms: umlauts written out (ü → ue), and dropped (ü → u).
+const simple = (text) => text.replace(/ß/g, 'ss').normalize('NFKD').replace(/\p{M}/gu, '')
+    .replace(/[^a-z0-9]+/g, ' ').trim();
 export function fold(text) {
-    return text.toLowerCase()
-        .replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
-        .normalize('NFKD').replace(/[̀-ͯ]/g, '')
-        .replace(/[^a-z0-9]+/g, ' ').trim();
+    return simple(text.toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue'));
+}
+export function plain(text) {
+    return simple(text.toLowerCase());
+}
+
+export function entryFor(area) {
+    const forms = [...new Set([fold(area.name), plain(area.name)])];
+    return { area, forms, words: forms.flatMap((f) => f.split(' ')) };
 }
 
 export function search(entries, query, max = MAX) {
-    const q = fold(query);
-    if (!q) return [];
-    const variants = [q, q.replace(/ae/g, 'a').replace(/oe/g, 'o').replace(/ue/g, 'u')];
+    const queries = [...new Set([fold(query), plain(query)])].filter(Boolean);
+    if (!queries.length) return [];
     const scored = [];
     for (const entry of entries) {
         let score = null;
-        for (const v of variants) {
-            if (entry.folded === v) score = 0;
-            else if (entry.folded.startsWith(v)) score = Math.min(score ?? 9, 1);
-            else if (entry.words.some((w) => w.startsWith(v))) score = Math.min(score ?? 9, 2);
-            else if (entry.folded.includes(v)) score = Math.min(score ?? 9, 3);
+        for (const q of queries) {
+            for (const form of entry.forms) {
+                if (form === q) score = 0;
+                else if (form.startsWith(q)) score = Math.min(score ?? 9, 1);
+                else if (form.includes(q)) score = Math.min(score ?? 9, entry.words.some((w) => w.startsWith(q)) ? 2 : 3);
+            }
         }
         if (score !== null) scored.push([score, RANK[entry.area.level] ?? 9, entry.area.name.length, entry]);
     }
@@ -36,12 +44,9 @@ export function search(entries, query, max = MAX) {
 }
 
 export function createAreaSearch(input, results, areas, { onPick }) {
-    const entries = areas.list.map((area) => {
-        const folded = fold(area.name);
-        return { area, folded, words: folded.split(' ') };
-    });
+    const entries = areas.list.map(entryFor);
     const sameName = new Map();
-    for (const e of entries) sameName.set(e.folded, (sameName.get(e.folded) ?? 0) + 1);
+    for (const e of entries) sameName.set(e.forms[0], (sameName.get(e.forms[0]) ?? 0) + 1);
     let shown = [];
     let active = -1;
 
