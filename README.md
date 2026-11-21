@@ -6,43 +6,47 @@ How the cycling infrastructure recorded in OpenStreetMap has changed over time,
 classified the way [radinfra.de](https://radinfra.de) classifies it today, on one
 map with a time slider.
 
-Pilot: **Berlin, quarterly from January 2016 to the end of the history file, and from
-then on every quarter from Geofabrik's public extract** (see [Updates](#updates)).
+**Germany, quarterly from January 2016 to the end of the history file (16 November
+2026), with numbers for every Land, Kreis and Gemeinde** and, in Berlin, for every
+Bezirk and Ortsteil. Berlin came first and is still updated every quarter from
+Geofabrik's public extract (see [Updates](#updates)).
 
 The map draws radinfra.de's own "details" style — same categories, colours and
 dashes — against data computed here for every snapshot. Each side of a road is
 its own line, offset to its side. Clicking a line shows since when it has been
-in OSM in that form, with links to the way and its version history. For Berlin
-the background can show the aerial photo that matches the selected date.
+in OSM in that form, with links to the way and its version history. Where a Land
+or city offers them, the background can show the aerial photo that matches the
+selected date.
 
 Not a publication of radinfra.de or FixMyCity.
 
 ## How it works
 
 ```
-berlin-internal.osh.pbf                 full history, with personal metadata
-  │  osmium time-filter, every 3 months, metadata stripped
+germany-internal.osh.pbf                full history, with personal metadata
+  │  osmium time-filter, every 3 months, metadata stripped, one at a time
   ▼
-data/berlin/snapshots/<date>.osm.pbf    the state of OSM at each date
+data/germany/snapshots/<date>.osm.pbf   the state of OSM at a date (deleted once classified)
   │  OSMnexus, configs/tilda (bikelanes topic)
   ▼
-data/berlin/classified/<date>.parquet   radinfra categories per way / side of a road
+data/germany/classified/<date>.parquet  radinfra categories per way / side of a road
   │  pipeline/versions.py
-  ▼                                     one build: site/data/berlin/builds/<id>/
+  ▼                                     one build: site/data/germany/builds/<id>/
 versions.parquet                        every distinct version once, with a lifespan
   │  pipeline/areas.py (OSM boundaries)     │  manby (tippecanoe-compatible), MLT
   ▼                                         ▼
-areas.json                              tiles_lo.pmtiles, tiles.pmtiles
-  km per category, snapshot and area      z9–11 and z12–14, for all dates
-areas.geojson                           spans.bin
-  Bezirke and Ortsteile                   the popup's dates, 6 bytes per version
-                                        timeline.json
-                                          km per category and snapshot (whole extract)
+areas/index.json                        tiles_far.pmtiles, tiles_lo.pmtiles, tiles.pmtiles
+  every area: name, level, parent, box    z5–8, z9–11 and z12–14, for all dates
+areas/<Kreis>.json                      spans.bin
+  km per category, snapshot and area      the popup's dates, 6 bytes per version
+areas.pmtiles, outline.geojson          timeline.json
+  the boundaries                          km per category and snapshot (whole extract)
 ```
 
-Every command from `versions` on makes a new build
-([pipeline/builds.py](pipeline/builds.py)); `site/data/berlin/timeline.json`
-points at the current one.
+The regions are named in [pipeline/regions.py](pipeline/regions.py): `germany`,
+`berlin` and, small for trying things out, `saarland`. Every command from
+`versions` on makes a new build ([pipeline/builds.py](pipeline/builds.py));
+`site/data/<region>/timeline.json` points at the current one.
 
 **Classification.** [OSMnexus](https://github.com/rush42/OSMnexus) reimplements the
 radinfra.de classification from [tilda-geo](https://github.com/FixMyBerlin/tilda-geo)
@@ -98,20 +102,25 @@ bytes per version at offset `vid × 6` (`cf`, `ct` as snapshot indices, `pc`, `n
 as indices into the timeline's `categories`), and a click reads its six bytes with
 one range request. Without them the detail tiles are about a seventh smaller.
 
-No feature is dropped at any zoom (`--no-feature-limit --no-tile-size-limit`).
+From z9 on no feature is dropped (`--no-feature-limit --no-tile-size-limit`).
 tippecanoe's usual `--drop-densest-as-needed` would thin out versions unevenly, and
 streets would flicker in and out while scrubbing.
 
-**Two archives, as MapLibre Tiles.** A date change makes MapLibre re-filter every
-loaded tile, so overview tiles are kept light: `berlin_lo.pmtiles` (z9–11) has a
+**Three archives, as MapLibre Tiles.** A date change makes MapLibre re-filter every
+loaded tile, so overview tiles are kept light: `tiles_lo.pmtiles` (z9–11) has a
 layer `bikelanes_lo` with only category, side and lifespan, and versions with equal
-values merged into one feature per tile (`--reorder --coalesce`).
-`berlin.pmtiles` (z12–14) has every version in `bikelanes`, with the id and name
-that hover and popup need. Both are [MLT](https://github.com/maplibre/maplibre-tile-spec)
+values merged into one feature per tile (`--reorder --coalesce`). `tiles.pmtiles`
+(z12–14) has every version in `bikelanes`, with the id and name that hover and
+popup need. Below z9, for Germany seen whole, `tiles_far.pmtiles` (z5–8) leaves the
+side out and the short versions too, as radinfra.de leaves lines under 100 m out
+below z9: under 250 m at z5–6, 150 m at z7, 100 m at z8. That is 54 % of Germany's
+versions but 8 % of its km, and keeps its largest tile at 1.6 MB instead of 3.1 MB;
+a version is in or out by its own length, not by the date, so nothing flickers.
+All three are [MLT](https://github.com/maplibre/maplibre-tile-spec)
 (`--tile-format=mlt`, read by MapLibre GL JS 5.12 and later with
 `encoding: 'mlt'`), about a quarter smaller than the same tiles as MVT. manby
-cannot join MLT archives, hence two files and two sources; the page draws each
-category from both and switches at z12.
+cannot join MLT archives, hence three files and three sources; the page draws each
+category from each and switches at z9 and z12. For Germany: 18, 53 and 223 MB.
 
 **On the page,** dragging the timeline or holding a key moves readout, legend and
 chart at once, but the map only takes the newest date: once the input rests for
@@ -136,29 +145,38 @@ directions were added and tracks redrawn as one-way ways of their own.
 `COUNT_DIRECTIONS` in [pipeline/versions.py](pipeline/versions.py) switches to that
 count; it changes the km only, not the versions or the tiles.
 
-**Aerial photos.** For Berlin the background can be switched to the Geoportal's
-orthophotos (2017–2026, via the codefor.de mirror). For each snapshot the newest
+**Aerial photos.** The background can be switched to the orthophotos of the Land
+or city at the map's centre, a city's before its Land's (18 series; none for Bayern
+statewide, Schleswig-Holstein and Bremen in the index). For each snapshot the newest
 photo taken on or before that date is shown, which is what mappers could have seen
-at the time; photos dated only by year count from 1 January. The capture lists,
-[site/data/berlin_imagery.json](site/data/berlin_imagery.json) and, for Germany,
-[site/data/germany_imagery.json](site/data/germany_imagery.json) (21 series of
-Länder and cities, chosen by the map's centre, a city's before its Land's), are
-generated from
+at the time; photos dated only by year count from 1 January. Older ones exist for
+Berlin (2017–2026, Geoportal via the codefor.de mirror), Sachsen (from 2005),
+Rheinland-Pfalz (from 2016), Mecklenburg-Vorpommern (from 2019) and some cities;
+Länder that fly half their area a year have a coverage per capture. The lists,
+[site/data/germany_imagery.json](site/data/germany_imagery.json) and
+[site/data/berlin_imagery.json](site/data/berlin_imagery.json), are generated from
 the [Editor Layer Index](https://github.com/osmlab/editor-layer-index) with
-[@osm-editor-kit/maplibre-editor-layer-index](https://github.com/osm-editor-kit/maplibre-editor-layer-index):
+[@osm-editor-kit/maplibre-editor-layer-index](https://github.com/osm-editor-kit/maplibre-editor-layer-index).
+Every capture is tried as a browser would load it; one without an image or a CORS
+header is left out (Sachsen-Anhalt sends none), and one that draws only close up
+gets that zoom (Hessen from about 14.5):
 
 ```bash
 cd scripts/imagery && npm ci && npm run build
 ```
 
 **Areas.** The numbers on the page — legend, trend lines, timeline, table and the
-change table — are for an area: Berlin as a whole by default (inside the state
-boundary, so without the Brandenburg edges of the extract), or one of the 12 Bezirke
-and 97 Ortsteile, picked from the list or by clicking on the map. The boundaries are
-OSM's own (admin_level 4, 9 and 10) from the newest snapshot, used for every date.
-A line crossing a boundary counts with its part inside. The change table compares
-any snapshot with the one selected on the timeline; `?area=kreuzberg` links to an
-area.
+change table — are for an area: Germany as a whole by default (inside its boundary,
+so without the extract's edges abroad), or one of 16 Länder, 400 Kreise, 10,833
+Gemeinden, and in Berlin 12 Bezirke and 97 Ortsteile, found by typing part of a name
+or picked on the map. The boundaries are OSM's own (admin_level 2, 4, 6, 8, and 9
+and 10 in Berlin) from the newest snapshot, used for every date. A line crossing a
+boundary counts with its part inside. A name several areas share is kept by the
+highest of them, the others get their parent's slug (`aach-landkreis-konstanz`);
+Berlin's old slugs still work (`?area=bezirk-pankow`, `?area=biesdorf`). The page
+loads an index of all areas (0.4 MB compressed), an area's numbers with the file of
+its Kreis when it is picked, and the boundaries as tiles. The change table compares
+any snapshot with the one selected on the timeline.
 
 ## What the map shows and what it does not
 
@@ -170,8 +188,9 @@ area.
   a few metres. That is a change in mapping, not new infrastructure.
 - Snapshot granularity: a change is dated to the snapshot it first appears in; the
   popup says between which two snapshots it happened.
-- The dip from 2021 to 2024 (about −400 km for the extract, marked in the
-  timeline) is mostly a change of mapping, not of the streets. Checked by object
+- Such changes of mapping are regional. In Berlin, the dip from 2021 to 2024 (about
+  −400 km for Berlin's extract, marked on Berlin's timeline) is mostly one, not a
+  change of the streets. Checked by object
   and in a sample of the ways' tags: on 533 km of road sides the track tag went,
   mostly `cycleway:*=track` → `separate`, and the new ways of their own cover
   about 90 % of that, but at first often without full tags (around 170 km
@@ -202,13 +221,13 @@ OSMnexus release binary).
 uv sync
 ./scripts/fetch_osmnexus.sh            # pinned OSMnexus binary + tilda config → .tools/
 
-uv run python -m pipeline all --osh berlin-internal.osh.pbf --start 2016-01-01 --step 3
+uv run python -m pipeline all --region germany --osh germany-internal.osh.pbf --threads 8
 uv run python scripts/serve.py         # http://127.0.0.1:8765
 ```
 
-To work on the page without building, `./scripts/fetch_data.sh` downloads the
-published build instead. Locally the page reads `site/data/`; with `?data=remote`
-it reads the bucket.
+To work on the page without building, `./scripts/fetch_data.sh germany` downloads
+the published build instead. Locally the page reads `site/data/`, `?region=berlin`
+shows another region built there, and `?data=remote` reads the bucket.
 
 Each step also runs on its own (`snapshots`, `classify`, `versions`, `areas`, `tiles`);
 classifications are reused unless `--force`. From a history file, `all` and
@@ -216,7 +235,8 @@ classifications are reused unless `--force`. From a history file, `all` and
 newest, for the area boundaries; `--keep-snapshots` keeps them), so a run that
 stops carries on where it was when started again. `--jobs N` works on N snapshots
 at once; memory is the limit. `--region` picks one of the regions in
-[pipeline/regions.py](pipeline/regions.py) (default `berlin`); each has its own
+[pipeline/regions.py](pipeline/regions.py) (default `berlin`, for the quarterly
+update); each has its own
 folders in `data/` and `site/data/`, and its timeline keeps the bounding box of the
 history file, which an update's extract has to cover. Instead of a history file, dated
 extracts work too, such as Geofabrik's yearly public `berlin-YYMMDD.osm.pbf`:
@@ -230,10 +250,13 @@ ranges and the stock server ignores `Range`.
 
 The link preview for Mastodon, Slack and the like (`site/og.png`, named in the
 page's Open Graph tags) is drawn from a build by `uv run python scripts/og_image.py`;
-it needs `rsvg-convert` and the Inter font.
+it needs `rsvg-convert` and the Inter font (`apt install librsvg2-bin fonts-inter`).
 
-Berlin, 45 snapshots on a 2-core machine: about 15 s per snapshot to cut and 10 s to
-classify.
+Germany, 45 snapshots from a 12.5 GB history file on 8 cores and 48 GB: 3 hours to
+cut and classify (about 2½ min to cut and 1 min to classify a snapshot, at most
+4.4 GB of memory, one 4.2 GB snapshot on disk at a time), then 6 minutes for
+3.2 million versions, 11,359 areas and the tiles (at most 12 GB). Berlin on a
+2-core machine: about 15 s per snapshot to cut and 10 s to classify.
 
 ## Publishing
 
@@ -244,8 +267,9 @@ public B2 bucket `radinfra-history`, behind Cloudflare at
 `site/data/`:
 
 ```
-berlin/timeline.json              Cache-Control: no-cache — names the current build
-berlin/builds/<id>/…              Cache-Control: public, max-age=31536000, immutable
+germany/timeline.json             Cache-Control: no-cache — names the current build
+germany/builds/<id>/…             Cache-Control: public, max-age=31536000, immutable
+berlin/…                          the same for Berlin
 ```
 
 A build's id is a hash of all its files, so a path always means the same bytes:
@@ -254,8 +278,8 @@ and popup dates of two builds. The build also holds `versions.parquet`, the stat
 the [updates](#updates) continue from; the page never loads it.
 
 ```bash
-./scripts/publish_b2.sh berlin        # the build, then the timeline; old builds deleted
-./scripts/fetch_data.sh berlin        # the published build into site/data/berlin/
+./scripts/publish_b2.sh germany       # the build, then the timeline; old builds deleted
+./scripts/fetch_data.sh germany       # the published build into site/data/germany/
 ```
 
 `publish_b2.sh` takes the key from `B2_APPLICATION_KEY_ID` and
@@ -267,9 +291,11 @@ file.
 ## Updates
 
 [.github/workflows/update.yml](.github/workflows/update.yml) adds the newest state
-of OSM on the 2nd of January, April, July and October: Geofabrik's public
-`berlin-latest.osm.pbf`, which has no personal metadata, dated by its replication
-timestamp. It is classified like every snapshot before it and appended to the
+of OSM on the 2nd of January, April, July and October. For now it does so for
+Berlin; Germany's quarterly update is to follow, until then by hand
+(`pipeline update --region germany` with `germany-latest.osm.pbf`). It takes
+Geofabrik's public `berlin-latest.osm.pbf`, which has no personal metadata, dated
+by its replication timestamp. It is classified like every snapshot before it and appended to the
 versions of the published build; areas, tiles and popup file are rebuilt, and the
 new build is published. The history file is not needed again.
 
@@ -296,8 +322,9 @@ and keeps the result as an artifact either way.
   by FixMyCity; style file `site/radinfra_details_style.json` taken from their tiles.
 - [OSMnexus](https://github.com/rush42/OSMnexus) (AGPL-3.0), used as a binary with its `configs/tilda`.
 - [manby](https://github.com/birkskyum/manby) for tiling, [osmium](https://osmcode.org/osmium-tool/) for snapshots.
-- Aerial photos: Geoportal Berlin (Datenlizenz Deutschland, OSM permission), tiles from
-  the codefor.de mirror, listed via the Editor Layer Index.
+- Aerial photos: the survey offices of the Länder and the cities named in the
+  page's credit line, listed via the Editor Layer Index; Berlin's from the Geoportal
+  (Datenlizenz Deutschland, OSM permission) via the codefor.de mirror.
 - Version history links go to [OSM Deep History](https://osmlab.github.io/osm-deep-history/).
 - The page's look (colours, cards, headings, popups, tooltips) follows
   [vizsim/unfallkarte](https://github.com/vizsim/unfallkarte); layout and map
