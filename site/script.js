@@ -5,10 +5,13 @@ import {
     DATA_ATTRIBUTION,
     DEEP_HISTORY_URL,
     DETAIL_MINZOOM,
+    FAR_SOURCE_ID,
+    FAR_SOURCE_LAYER,
     HOVER_DELAY_MS,
     HOVER_LAYER_ID,
     IMAGERY_URL,
     LAYER_PREFIX,
+    OVERVIEW_MINZOOM,
     OVERVIEW_SOURCE_ID,
     OVERVIEW_SOURCE_LAYER,
     PLAY_INTERVAL_MS,
@@ -28,6 +31,7 @@ import {
     groupLabel,
     hoverStyle,
     initialMapConfig,
+    farTilesURL,
     overviewTilesURL,
     radinfraURL,
     spansURL,
@@ -213,18 +217,25 @@ function styleGroups(style) {
         }));
 }
 
-// Each category is drawn twice: from the merged overview layer below
-// DETAIL_MINZOOM, from the detail layer at and above it.
-const historyLayerId = (group, overview) => `${LAYER_PREFIX}${overview ? 'lo-' : ''}${group.id}`;
+// Each category is drawn three times: far out below OVERVIEW_MINZOOM, from the
+// merged overview layer up to DETAIL_MINZOOM, from the detail layer above it.
+const TIERS = {
+    far: { prefix: 'far-', source: FAR_SOURCE_ID, sourceLayer: FAR_SOURCE_LAYER, zooms: { maxzoom: OVERVIEW_MINZOOM } },
+    lo: { prefix: 'lo-', source: OVERVIEW_SOURCE_ID, sourceLayer: OVERVIEW_SOURCE_LAYER,
+        zooms: { minzoom: OVERVIEW_MINZOOM, maxzoom: DETAIL_MINZOOM } },
+    detail: { prefix: '', source: SOURCE_ID, sourceLayer: SOURCE_LAYER, zooms: { minzoom: DETAIL_MINZOOM } },
+};
+const historyLayerId = (group, tier) => `${LAYER_PREFIX}${TIERS[tier].prefix}${group.id}`;
 
-function historyLayerSpec(group, overview) {
+function historyLayerSpec(group, tier) {
     const { layer } = group;
+    const t = TIERS[tier];
     return {
         ...layer,
-        id: historyLayerId(group, overview),
-        source: overview ? OVERVIEW_SOURCE_ID : SOURCE_ID,
-        'source-layer': overview ? OVERVIEW_SOURCE_LAYER : SOURCE_LAYER,
-        ...(overview ? { maxzoom: DETAIL_MINZOOM } : { minzoom: DETAIL_MINZOOM }),
+        id: historyLayerId(group, tier),
+        source: t.source,
+        'source-layer': t.sourceLayer,
+        ...t.zooms,
         filter: ['all', layer.filter, AT_SELECTED_TIME],
         layout: { ...(layer.layout ?? {}), visibility: 'visible' },
         // radinfra's own offset is a small constant; here each side of a road gets
@@ -477,6 +488,7 @@ async function main() {
         const tiles = { type: 'vector', encoding: TILE_ENCODING, attribution: DATA_ATTRIBUTION };
         map.addSource(SOURCE_ID, { ...tiles, url: tilesURL(build) });
         map.addSource(OVERVIEW_SOURCE_ID, { ...tiles, url: overviewTilesURL(build) });
+        map.addSource(FAR_SOURCE_ID, { ...tiles, url: farTilesURL(build) });
 
         // The halo is switched with feature-state rather than a filter, so a hover
         // never touches the layer's filter. Invisible except on the hovered version.
@@ -497,11 +509,10 @@ async function main() {
             },
         });
         for (const group of groups) {
-            map.addLayer(historyLayerSpec(group, true));
-            map.addLayer(historyLayerSpec(group, false));
+            for (const tier of Object.keys(TIERS)) map.addLayer(historyLayerSpec(group, tier));
         }
         // Only the detail layers carry ids and names, so only they are hit-tested.
-        const historyIds = groups.map((g) => historyLayerId(g, false));
+        const historyIds = groups.map((g) => historyLayerId(g, 'detail'));
 
         const imagery = imageryList?.series?.length ? createImagery(map, {
             series: imageryList.series,
@@ -513,7 +524,7 @@ async function main() {
 
         const legend = buildLegend(groups, snapshots, (groupId, visible) => {
             const group = groups.find((g) => g.id === groupId);
-            for (const id of [historyLayerId(group, true), historyLayerId(group, false)]) {
+            for (const id of Object.keys(TIERS).map((tier) => historyLayerId(group, tier))) {
                 if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
             }
         });

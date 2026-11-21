@@ -23,9 +23,11 @@ export const TIMELINE_URL = new URL('timeline.json', DATA_BASE).href;
 // Everything else is in that build's folder, which never changes once published:
 // a browser cannot combine tiles and popup data of two builds.
 const buildFile = (build, name) => new URL(`builds/${build}/${name}`, DATA_BASE).href;
-// MapLibre Tiles in two archives (pipeline/tiles.py): details and overview.
+// MapLibre Tiles in three archives (pipeline/tiles.py): details, overview, and far
+// out (Germany whole, without the shortest lines).
 export const tilesURL = (build) => `pmtiles://${buildFile(build, 'tiles.pmtiles')}`;
 export const overviewTilesURL = (build) => `pmtiles://${buildFile(build, 'tiles_lo.pmtiles')}`;
+export const farTilesURL = (build) => `pmtiles://${buildFile(build, 'tiles_far.pmtiles')}`;
 export const TILE_ENCODING = 'mlt';
 // The popup's dates, read per line on click (pipeline/versions.py, write_spans).
 export const spansURL = (build) => buildFile(build, 'spans.bin');
@@ -39,15 +41,18 @@ export const STYLE_URL = new URL('radinfra_details_style.json', base).href;
 
 export const SOURCE_ID = 'history';
 export const OVERVIEW_SOURCE_ID = 'history-lo';
+export const FAR_SOURCE_ID = 'history-far';
 export const LAYER_PREFIX = 'rh-';
 export const HOVER_LAYER_ID = 'rh-hover';
 
-// Two layers (pipeline/tiles.py): every version with its id and name from z12,
-// and below that a merged overview without ids. Lines can be hovered and clicked
-// from DETAIL_MINZOOM on.
+// Three layers (pipeline/tiles.py): every version with its id and name from z12,
+// below that a merged overview without ids, and below z9 the same without short
+// lines and sides. Lines can be hovered and clicked from DETAIL_MINZOOM on.
 export const SOURCE_LAYER = 'bikelanes';
 export const OVERVIEW_SOURCE_LAYER = 'bikelanes_lo';
+export const FAR_SOURCE_LAYER = 'bikelanes_far';
 export const DETAIL_MINZOOM = 12;
+export const OVERVIEW_MINZOOM = 9;
 
 // Invisible click target in the tilda style; hit testing here does not need it.
 export const SKIP_LAYER_IDS = ['hitarea-bikelanes-details'];

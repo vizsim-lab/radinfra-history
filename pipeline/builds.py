@@ -3,7 +3,7 @@
     site/data/<slug>/timeline.json          points at the current build
     site/data/<slug>/builds/<id>/           one build, never changed once made
         timeline.json  versions.parquet  spans.bin  areas.json  areas.geojson
-        tiles.pmtiles  tiles_lo.pmtiles
+        tiles.pmtiles  tiles_lo.pmtiles  tiles_far.pmtiles
 
 The bucket has the same layout (scripts/publish_b2.sh). A build's id is a hash of
 every file in it, so a path always means the same bytes and can be cached for
@@ -34,7 +34,7 @@ from pathlib import Path
 
 # What a build has before it can be published.
 REQUIRED = ("timeline.json", "versions.parquet", "spans.bin", "areas.json", "areas.geojson",
-            "tiles.pmtiles", "tiles_lo.pmtiles")
+            "tiles.pmtiles", "tiles_lo.pmtiles", "tiles_far.pmtiles")
 ID = re.compile(r"[0-9a-f]{12}$")
 
 
