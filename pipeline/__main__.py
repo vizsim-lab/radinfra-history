@@ -22,7 +22,7 @@ import duckdb
 
 from . import regions
 from . import snapshots as snaps
-from .areas import build_areas
+from .areas import build_areas, current_slugs
 from .builds import REQUIRED, Region
 from .classify import classify_all, classify_history, classify_snapshot, date_key
 from .tiles import build_tiles
@@ -33,10 +33,11 @@ SITE = Path("site")
 
 # Files of the current build a command takes over: what it does not make anew and
 # what does not depend on what it makes. New versions change everything else.
-KEEP = {
-    "areas": [name for name in REQUIRED if not name.startswith("areas.")],
-    "tiles": [name for name in REQUIRED if not name.startswith("tiles")],
-}
+VERSIONS = ["timeline.json", "versions.parquet", "spans.bin"]
+AREAS = ["areas/", "areas.pmtiles", "outline.geojson"]
+TILES = ["tiles.pmtiles", "tiles_lo.pmtiles", "tiles_far.pmtiles"]
+KEEP = {"areas": VERSIONS + TILES, "tiles": VERSIONS + AREAS}
+assert set(VERSIONS + AREAS + TILES) >= {n.split("/")[0] + ("/" if "/" in n else "") for n in REQUIRED}
 
 
 def _snapshot_files(args):
@@ -147,8 +148,7 @@ def main():
         print("[areas]", flush=True)
         boundaries = args.boundaries_pbf or max(
             Path(args.snapshot_dir).glob("*.osm.pbf"), key=snaps.date_from_filename)
-        build_areas(boundaries, versions_path, timeline_path, work / "areas.json", work / "areas.geojson",
-                    region=args.spec)
+        build_areas(boundaries, versions_path, timeline_path, work, region=args.spec)
 
     if args.command in ("all", "tiles"):
         print("[tiles]", flush=True)
@@ -196,9 +196,7 @@ def _update(args, region):
     classified = classify_snapshot(snapshot_date, pbf, args.classified_dir / f"{snapshot_date.isoformat()}.parquet",
                                    args.threads)
     # The areas there now must all be there after, so a broken boundary cannot drop one.
-    areas_now = old / "areas.json"
-    keep_areas = ([a["slug"] for a in json.loads(areas_now.read_text(encoding="utf-8"))["areas"]]
-                  if areas_now.is_file() else [])
+    keep_areas = current_slugs(old)
     work = region.start(keep=("timeline.json", "versions.parquet"))
     versions_path, timeline_path = work / "versions.parquet", work / "timeline.json"
     print("[versions]", flush=True)
@@ -215,8 +213,7 @@ def _update(args, region):
           + (f"{edited:,} of them edited in OSM since {last}" if edited is not None
              else "the extract has no timestamps to check them"), flush=True)
     print("[areas]", flush=True)
-    build_areas(pbf, versions_path, timeline_path, work / "areas.json", work / "areas.geojson",
-                region=args.spec, keep=keep_areas)
+    build_areas(pbf, versions_path, timeline_path, work, region=args.spec, keep=keep_areas)
     print("[tiles]", flush=True)
     build_tiles(versions_path, work / "tiles.pmtiles", args.minzoom, args.maxzoom)
     build = region.finish()

@@ -69,9 +69,8 @@ def main():
     build = REGION.build_dir(REGION.check())
     timeline = json.loads((build / "timeline.json").read_text(encoding="utf-8"))
     newest = timeline["snapshots"][-1]["key"]
-    berlin = next(f for f in json.loads((build / "areas.geojson").read_text(encoding="utf-8"))["features"]
-                  if f["properties"]["slug"] == "berlin")
-    city = shapely.geometry.shape(berlin["geometry"])
+    outline = json.loads((build / "outline.geojson").read_text(encoding="utf-8"))
+    city = shapely.geometry.shape(outline["geometry"])
     project = projector(shapely.bounds(city))
 
     category, wkb = duckdb.connect().execute(

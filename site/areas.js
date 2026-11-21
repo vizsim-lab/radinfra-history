@@ -4,25 +4,33 @@
 // Picking an area scopes every number on the page to it: legend, trend lines,
 // timeline, table and the change table. The map keeps drawing everything, but
 // dims what lies outside and outlines the area. An area can be picked from the
-// list or, for Ortsteile and Gemeinden, by clicking on the map.
+// search or, for Ortsteile and Gemeinden, by clicking on the map.
+//
+// The index (names, levels, parents, boxes) is loaded once; an area's numbers come
+// with its bundle, the file of its Kreis, when it is picked; the boundaries are
+// tiles (areas.pmtiles).
 
 const SOURCE = 'areas';
-const MASK_SOURCE = 'area-mask';
+const SOURCE_LAYER = 'areas';
+const OUTSIDE_SOURCE = 'area-outside';
 const LAYERS = {
+    outside: 'area-outside',
     mask: 'area-mask',
     outline: 'area-outline',
     pickFill: 'area-pick-fill',
     pickLine: 'area-pick-line',
 };
+const DIM = { 'fill-color': '#ffffff', 'fill-opacity': 0.6 };
+const NONE = ['==', ['get', 'slug'], ''];
 
 const WORLD = [[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]];
 
 // What a click on the map picks: the smallest areas there are.
 const PICKABLE = ['in', ['get', 'level'], ['literal', ['Ortsteil', 'Gemeinde']]];
 
-// The world with the area cut out, to dim everything around it.
-function maskFor(feature) {
-    const { geometry } = feature;
+// The world with the region cut out, to dim what lies beyond it.
+function outsideOf(outline) {
+    const { geometry } = outline;
     const polygons = geometry.type === 'Polygon' ? [geometry.coordinates] : geometry.coordinates;
     return {
         type: 'Feature',
@@ -31,34 +39,67 @@ function maskFor(feature) {
     };
 }
 
-export function createAreas(map, { data, geojson, beforeId = undefined, onSelect, onPicking = () => {} }) {
-    const bySlug = new Map(data.areas.map((a) => [a.slug, a]));
-    const featureBySlug = new Map(geojson.features.map((f) => [f.properties.slug, f]));
-    // The region itself comes first; old slugs (Berlin's own, inside Germany) as aliases.
-    const top = data.areas[0];
-    const aliases = data.aliases ?? {};
+// Everything in the region but one area: at each level from it up, its siblings.
+// They cover the rest of the region once each, so the dimming is even.
+function maskFilter(area, get) {
+    const parts = [];
+    for (let a = area; a?.parent; a = get(a.parent)) {
+        parts.push(['all',
+            ['==', ['get', 'level'], a.level],
+            ['==', ['get', 'parent'], a.parent],
+            ['!=', ['get', 'slug'], a.slug]]);
+    }
+    return parts.length ? ['any', ...parts] : NONE;
+}
+
+// areas/index.json: rows of `fields`, the region first.
+export function readIndex(data) {
+    const at = Object.fromEntries(data.fields.map((name, i) => [name, i]));
+    const list = data.areas.map((row) => ({
+        slug: row[at.slug], name: row[at.name], level: row[at.level], parent: row[at.parent],
+        bundle: row[at.bundle], km2: row[at.km2], bbox: row[at.bbox],
+    }));
+    return { list, aliases: data.aliases ?? {} };
+}
+
+export function createAreas(map, { index, loadBundle, tilesURL, encoding, outline, beforeId = undefined,
+    onSelect, onPicking = () => {} }) {
+    const { list, aliases } = index;
+    const bySlug = new Map(list.map((a) => [a.slug, a]));
+    const childrenOf = new Map();
+    for (const a of list) {
+        if (!a.parent) continue;
+        if (!childrenOf.has(a.parent)) childrenOf.set(a.parent, []);
+        childrenOf.get(a.parent).push(a);
+    }
+    const top = list[0];
     const find = (slug) => bySlug.get(slug) ?? bySlug.get(aliases[slug]);
     let current = top;
     let picking = false;
     let hovered = null;
+    let request = 0;
 
-    map.addSource(SOURCE, { type: 'geojson', data: geojson, promoteId: 'slug' });
-    map.addSource(MASK_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+    map.addSource(SOURCE, { type: 'vector', url: tilesURL, encoding, promoteId: 'slug' });
+    map.addSource(OUTSIDE_SOURCE, {
+        type: 'geojson',
+        data: outline ? outsideOf(outline) : { type: 'FeatureCollection', features: [] },
+    });
 
     // Above the lines, so what lies outside the area is dimmed, under nothing else.
+    map.addLayer({ id: LAYERS.outside, type: 'fill', source: OUTSIDE_SOURCE, paint: DIM }, beforeId);
     map.addLayer({
-        id: LAYERS.mask, type: 'fill', source: MASK_SOURCE,
-        paint: { 'fill-color': '#ffffff', 'fill-opacity': 0.6 },
+        id: LAYERS.mask, type: 'fill', source: SOURCE, 'source-layer': SOURCE_LAYER,
+        filter: NONE, paint: DIM,
     }, beforeId);
     map.addLayer({
-        id: LAYERS.outline, type: 'line', source: SOURCE,
-        filter: ['==', ['get', 'slug'], ''],
+        id: LAYERS.outline, type: 'line', source: SOURCE, 'source-layer': SOURCE_LAYER,
+        filter: NONE,
         layout: { 'line-join': 'round' },
         paint: { 'line-color': '#1f2937', 'line-width': 2, 'line-opacity': 0.8 },
     }, beforeId);
-    // Only while picking on the map: every Ortsteil, the hovered one tinted.
+    // Only while picking on the map: every Ortsteil or Gemeinde, the hovered one tinted.
     map.addLayer({
-        id: LAYERS.pickFill, type: 'fill', source: SOURCE,
+        id: LAYERS.pickFill, type: 'fill', source: SOURCE, 'source-layer': SOURCE_LAYER,
         filter: PICKABLE,
         layout: { visibility: 'none' },
         paint: {
@@ -67,7 +108,7 @@ export function createAreas(map, { data, geojson, beforeId = undefined, onSelect
         },
     }, beforeId);
     map.addLayer({
-        id: LAYERS.pickLine, type: 'line', source: SOURCE,
+        id: LAYERS.pickLine, type: 'line', source: SOURCE, 'source-layer': SOURCE_LAYER,
         filter: PICKABLE,
         layout: { visibility: 'none' },
         paint: { 'line-color': '#374151', 'line-width': 1, 'line-opacity': 0.6 },
@@ -80,18 +121,15 @@ export function createAreas(map, { data, geojson, beforeId = undefined, onSelect
 
     function setHover(slug) {
         if (hovered === slug) return;
-        if (hovered) map.setFeatureState({ source: SOURCE, id: hovered }, { hover: false });
+        if (hovered) map.setFeatureState({ source: SOURCE, sourceLayer: SOURCE_LAYER, id: hovered }, { hover: false });
         hovered = slug;
-        if (slug) map.setFeatureState({ source: SOURCE, id: slug }, { hover: true });
+        if (slug) map.setFeatureState({ source: SOURCE, sourceLayer: SOURCE_LAYER, id: slug }, { hover: true });
     }
 
     function show(area, { fit }) {
         current = area;
-        const feature = featureBySlug.get(area.slug);
-        map.getSource(MASK_SOURCE).setData({
-            type: 'FeatureCollection', features: feature ? [maskFor(feature)] : [],
-        });
-        map.setFilter(LAYERS.outline, ['==', ['get', 'slug'], area.slug]);
+        map.setFilter(LAYERS.mask, maskFilter(area, (slug) => bySlug.get(slug)));
+        map.setFilter(LAYERS.outline, area === top ? NONE : ['==', ['get', 'slug'], area.slug]);
         if (fit && area.bbox) {
             const [w, s, e, n] = area.bbox;
             map.fitBounds([[w, s], [e, n]], { padding: fitPadding(map), maxZoom: 15, duration: 600 });
@@ -147,9 +185,19 @@ export function createAreas(map, { data, geojson, beforeId = undefined, onSelect
         if (picking && event.key === 'Escape') setPicking(false);
     });
 
-    function select(slug, { fit = false } = {}) {
+    // The numbers come with the area's bundle; of quick picks, the last one wins.
+    async function select(slug, { fit = false } = {}) {
         const area = find(slug) ?? top;
-        if (area) show(area, { fit });
+        const mine = ++request;
+        let bundle = null;
+        try {
+            bundle = await loadBundle(area.bundle);
+        } catch (error) {
+            console.warn(`area numbers for ${area.slug} unavailable:`, error);
+        }
+        if (mine !== request) return;
+        area.km = bundle?.areas?.[area.slug]?.km ?? {};
+        show(area, { fit });
     }
 
     return {
@@ -159,11 +207,12 @@ export function createAreas(map, { data, geojson, beforeId = undefined, onSelect
         get picking() {
             return picking;
         },
+        top,
+        list,
         select,
         setPicking,
-        top,
-        byLevel: (level) => data.areas.filter((a) => a.level === level),
         get: (slug) => bySlug.get(slug),
+        children: (slug) => childrenOf.get(slug) ?? [],
     };
 }
 

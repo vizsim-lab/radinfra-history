@@ -125,9 +125,12 @@ export const SIDE_OFFSET_STOPS = [
     [20, 8],
 ];
 
-// Bezirke and Ortsteile with km per category and snapshot (pipeline/areas.py).
-export const areasURL = (build) => buildFile(build, 'areas.json');
-export const areasGeojsonURL = (build) => buildFile(build, 'areas.geojson');
+// The areas (pipeline/areas.py): an index for the search, their numbers in bundles
+// (one per Kreis), their boundaries as tiles, and the region's outline.
+export const areasIndexURL = (build) => buildFile(build, 'areas/index.json');
+export const areaBundleURL = (build, bundle) => buildFile(build, `areas/${bundle}.json`);
+export const areasTilesURL = (build) => `pmtiles://${buildFile(build, 'areas.pmtiles')}`;
+export const outlineURL = (build) => buildFile(build, 'outline.geojson');
 
 // Berlin's aerial photo series, from the OSM Editor Layer Index (scripts/imagery);
 // part of the page, not of the data.

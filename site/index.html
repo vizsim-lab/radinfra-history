@@ -37,7 +37,7 @@
 
     <!-- While an Ortsteil is picked on the map (areas.js). -->
     <div id="pick-bar" class="pick-bar" role="status" hidden>
-        <p class="pick-hint">Ortsteil auf der Karte anklicken.<span class="pick-hint__key"> <kbd>Esc</kbd> bricht ab.</span></p>
+        <p class="pick-hint">Gebiet auf der Karte anklicken.<span class="pick-hint__key"> <kbd>Esc</kbd> bricht ab.</span></p>
         <button type="button" id="pick-cancel" class="btn">Abbrechen</button>
     </div>
 
@@ -70,9 +70,15 @@
                 </div>
                 <div class="legend-section-content">
                     <div class="area-row">
-                        <select id="area-select" aria-label="Gebiet"></select>
+                        <div class="area-search">
+                            <input id="area-search" type="search" autocomplete="off" spellcheck="false"
+                                   placeholder="Gebiet suchen …" aria-label="Gebiet suchen"
+                                   role="combobox" aria-autocomplete="list" aria-expanded="false"
+                                   aria-controls="area-results" />
+                            <ul id="area-results" class="area-results" role="listbox" aria-label="Gebiete" hidden></ul>
+                        </div>
                         <button type="button" id="area-pick" class="btn btn--icon" aria-pressed="false"
-                                title="Ortsteil auf der Karte anklicken">
+                                title="Gebiet auf der Karte anklicken">
                             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3" /><circle cx="8" cy="8" r="3.5" /></svg>
                             <span>Auf der Karte</span>
                         </button>

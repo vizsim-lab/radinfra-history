@@ -80,7 +80,7 @@ def _far_input(versions_parquet, path):
     return {"*": ["any", *(["all", ["==", "mz", zoom], [">=", "$zoom", zoom]] for zoom, _ in FAR_LENGTHS)]}
 
 
-def _manby(out, layer, minzoom, maxzoom, attributes, extra, source):
+def run_manby(out, layer, minzoom, maxzoom, attributes, extra, source):
     """Run in the output's folder, as plain `manby` with relative names: manby
     writes its command line into the archive (generator_options), and so the
     archive does not depend on where it was built or name a local path."""
@@ -113,12 +113,12 @@ def build_tiles(versions_parquet, out_pmtiles, minzoom=9, maxzoom=14):
     far_input = far.with_name(".far.parquet")
     try:
         far_filter = _far_input(versions_parquet, far_input)
-        _manby(far, FAR_LAYER, FAR_MINZOOM, minzoom - 1, [*FAR_ATTRIBUTES, "mz"],
+        run_manby(far, FAR_LAYER, FAR_MINZOOM, minzoom - 1, [*FAR_ATTRIBUTES, "mz"],
                [*merge, "-j", json.dumps(far_filter)], far_input)
     finally:
         far_input.unlink(missing_ok=True)
-    _manby(overview, OVERVIEW_LAYER, minzoom, DETAIL_MINZOOM - 1, OVERVIEW_ATTRIBUTES, merge, versions_parquet)
-    _manby(out_pmtiles, DETAIL_LAYER, DETAIL_MINZOOM, maxzoom, DETAIL_ATTRIBUTES,
+    run_manby(overview, OVERVIEW_LAYER, minzoom, DETAIL_MINZOOM - 1, OVERVIEW_ATTRIBUTES, merge, versions_parquet)
+    run_manby(out_pmtiles, DETAIL_LAYER, DETAIL_MINZOOM, maxzoom, DETAIL_ATTRIBUTES,
            # The version id becomes the feature id, for hover and popup.
            ["--use-attribute-for-id=vid"], versions_parquet)
     for path in (far, overview, out_pmtiles):

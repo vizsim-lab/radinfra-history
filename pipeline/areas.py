@@ -13,8 +13,10 @@ inside, as radinfra.de's Statistik does. Lengths count as everywhere else
 
 Writes, into the build:
 
-    areas.json      km per legend row and snapshot for every area
-    areas.geojson   simplified boundaries for the map
+    areas/index.json      every area: name, level, parent, bundle, km², bbox
+    areas/<bundle>.json   km per legend row and snapshot, for the areas of a Kreis
+    areas.pmtiles         the boundaries as tiles (outline, dimming, picking)
+    outline.geojson       the region's own outline, simplified
 """
 
 import json
@@ -30,6 +32,7 @@ import shapely
 
 from . import tools
 from .style import legend_groups
+from .tiles import run_manby
 from .versions import counted_m, geometry_lengths_m
 
 # OSM's admin levels in Germany, as the page names them.
@@ -40,6 +43,14 @@ PLURAL = {"Staat": "Staaten", "Land": "Länder", "Kreis": "Kreise", "Gemeinde": 
 SIMPLIFY_DEG = 0.00005
 # Versions cut with the areas at once: bounds the memory for Germany.
 LINE_CHUNK = 1_000_000
+# Up to this many areas, all numbers are one file (Berlin's 110); above, a file
+# per Kreis (Germany's 11,359 in 413).
+BUNDLE_ALL_UP_TO = 500
+# The boundary tiles: from Germany whole to street level (overzoomed beyond).
+AREAS_LAYER = "areas"
+AREAS_MINZOOM, AREAS_MAXZOOM = 4, 12
+# ~100 m: the region's outline in the link preview.
+OUTLINE_DEG = 0.001
 
 
 def slugify(name):
@@ -179,8 +190,9 @@ def _assign_slugs(areas):
         raise SystemExit(f"area slugs are not unique: {sorted(duplicates)}")
 
 
-def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_json, out_geojson, region, keep=()):
-    """`region`: its entry in pipeline/regions.py. `keep`: slugs that must still
+def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_dir, region, keep=()):
+    """Into `out_dir` (a build's work folder). `region`: its entry in
+    pipeline/regions.py. `keep`: slugs that must still
     be there (the quarterly update passes the current ones, so an extract with a
     broken boundary cannot drop an area)."""
     timeline = json.loads(Path(timeline_json).read_text(encoding="utf-8"))
@@ -236,44 +248,18 @@ def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_json, out_geo
         changes += [starts.sum(), ends.sum(), (starts & in_region).sum(), (ends & in_region).sum()]
     km = np.cumsum(diff, axis=2)[:, :, :n] / 1000.0
 
-    out = {
-        "snapshots": [s["key"] for s in timeline["snapshots"]],
-        "groups": [g["id"] for g in groups],
-        "areas": [],
-    }
-    if aliases:
-        out["aliases"] = aliases
-    for a, area in enumerate(areas):
+    numbers = []
+    for a in range(len(areas)):
         series = {}
         for g, group in enumerate(groups):
             values = np.round(km[a, g], 2)
             if values.any():
                 series[group["id"]] = [float(v) for v in values]
-        bounds = shapely.bounds(area["geom"])
-        out["areas"].append({
-            "slug": area["slug"], "name": area["name"], "level": area["level"],
-            "parent": area["parent"], "osm": area["osm"],
-            "km2": round(area_km2(area["geom"]), 1),
-            "bbox": [round(float(v), 5) for v in bounds],
-            "km": series,
-        })
-    Path(out_json).write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")) + "\n",
-                              encoding="utf-8")
-
-    features = []
-    for area in areas:
-        geom = shapely.set_precision(shapely.simplify(area["geom"], SIMPLIFY_DEG, preserve_topology=True), 1e-5)
-        features.append({
-            "type": "Feature",
-            "properties": {"slug": area["slug"], "name": area["name"], "level": area["level"]},
-            "geometry": json.loads(shapely.to_geojson(geom)),
-        })
-    Path(out_geojson).write_text(json.dumps({"type": "FeatureCollection", "features": features},
-                                            ensure_ascii=False, separators=(",", ":")) + "\n",
-                                 encoding="utf-8")
+        numbers.append(series)
+    index = _write(Path(out_dir), areas, aliases, numbers, timeline, groups)
 
     top = areas[0]
-    top_now = sum(v[-1] for v in out["areas"][0]["km"].values())
+    top_now = sum(v[-1] for v in numbers[0].values())
     per_level = defaultdict(int)
     for area in areas[1:]:
         per_level[area["level"]] += 1
@@ -281,4 +267,84 @@ def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_json, out_geo
           f"{top['name']} now {top_now:,.0f} km of {timeline['total_km'][-1]:,.0f} km in the extract", flush=True)
     print(f"  newest snapshot: {changes[0]:,} versions start, {changes[1]:,} end; "
           f"in {top['name']} {changes[2]:,} and {changes[3]:,}", flush=True)
-    return out
+    return index
+
+
+def _bundles(areas):
+    """Which file holds each area's numbers: one for a small region; for a large
+    one the area's Kreis (or Berlin's Bezirk), with its Gemeinden (Ortsteile), and
+    one for the region and its Länder (`_top`)."""
+    if len(areas) <= BUNDLE_ALL_UP_TO:
+        return ["_all"] * len(areas)
+    by_slug = {a["slug"]: a for a in areas}
+    bundles = []
+    for area in areas:
+        node = area
+        while node["depth"] > 2:
+            node = by_slug[node["parent"]]
+        bundles.append(node["slug"] if node["depth"] == 2 else "_top")
+    return bundles
+
+
+def _write(out_dir, areas, aliases, numbers, timeline, groups):
+    """areas/index.json, areas/<bundle>.json, areas.pmtiles and outline.geojson."""
+    folder = out_dir / "areas"
+    folder.mkdir(parents=True, exist_ok=True)
+    bundles = _bundles(areas)
+    index = {
+        "snapshots": [s["key"] for s in timeline["snapshots"]],
+        "groups": [g["id"] for g in groups],
+        "fields": ["slug", "name", "level", "parent", "bundle", "km2", "bbox"],
+        "areas": [[a["slug"], a["name"], a["level"], a["parent"], bundle, round(area_km2(a["geom"]), 1),
+                   [round(float(v), 5) for v in shapely.bounds(a["geom"])]]
+                  for a, bundle in zip(areas, bundles)],
+        "aliases": aliases,
+    }
+    _write_json(folder / "index.json", index)
+    contents = defaultdict(dict)
+    for area, bundle, series in zip(areas, bundles, numbers):
+        contents[bundle][area["slug"]] = {"km": series}
+    for bundle, entries in contents.items():
+        _write_json(folder / f"{bundle}.json", {"areas": entries})
+
+    # The boundaries as tiles, for outline, dimming and picking on the map;
+    # manby simplifies them per zoom and keeps shared borders shared.
+    source = out_dir / ".areas.geojson"
+    try:
+        features = [{
+            "type": "Feature",
+            "properties": {"slug": a["slug"], "name": a["name"], "level": a["level"], "parent": a["parent"] or ""},
+            "geometry": json.loads(shapely.to_geojson(
+                shapely.set_precision(shapely.simplify(a["geom"], SIMPLIFY_DEG, preserve_topology=True), 1e-6))),
+        } for a in areas]
+        _write_json(source, {"type": "FeatureCollection", "features": features})
+        run_manby(out_dir / "areas.pmtiles", AREAS_LAYER, AREAS_MINZOOM, AREAS_MAXZOOM,
+                  ["slug", "name", "level", "parent"],
+                  ["--detect-shared-borders", "--no-tiny-polygon-reduction"], source)
+    finally:
+        source.unlink(missing_ok=True)
+
+    # The region's own outline, small, for the link preview (scripts/og_image.py).
+    outline = shapely.set_precision(shapely.simplify(areas[0]["geom"], OUTLINE_DEG, preserve_topology=True), 1e-4)
+    _write_json(out_dir / "outline.geojson", {"type": "Feature", "properties": {"name": areas[0]["name"]},
+                                              "geometry": json.loads(shapely.to_geojson(outline))})
+    sizes = {p.name: p.stat().st_size for p in [folder / "index.json", out_dir / "areas.pmtiles"]}
+    print(f"  {len(contents)} bundles; " + ", ".join(f"{k} {v / 1e6:.1f} MB" for k, v in sizes.items()), flush=True)
+    return index
+
+
+def _write_json(path, data):
+    Path(path).write_text(json.dumps(data, ensure_ascii=False, separators=(",", ":")) + "\n", encoding="utf-8")
+
+
+def current_slugs(build_dir):
+    """The areas a build has, so an update can insist they are still there."""
+    build_dir = Path(build_dir)
+    index = build_dir / "areas" / "index.json"
+    if index.is_file():
+        data = json.loads(index.read_text(encoding="utf-8"))
+        return [row[0] for row in data["areas"]]
+    legacy = build_dir / "areas.json"  # builds from before November 2026
+    if legacy.is_file():
+        return [a["slug"] for a in json.loads(legacy.read_text(encoding="utf-8"))["areas"]]
+    return []

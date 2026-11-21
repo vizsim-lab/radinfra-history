@@ -13,6 +13,7 @@ def make_work(region, **contents):
         data = contents.get(name, name)
         if name == "timeline.json":
             data = json.dumps(data if isinstance(data, dict) else {"snapshots": []})
+        (work / name).parent.mkdir(parents=True, exist_ok=True)
         (work / name).write_text(data, encoding="utf-8")
     return work
 
@@ -53,15 +54,28 @@ def test_a_changed_area_is_a_new_build(tmp_path):
     region = Region(tmp_path / "berlin")
     make_work(region)
     first = region.finish()
-    work = region.start(keep=[n for n in REQUIRED if not n.startswith("areas.")])
-    assert sorted(p.name for p in work.iterdir()) == sorted(n for n in REQUIRED if not n.startswith("areas."))
-    (work / "areas.json").write_text("other", encoding="utf-8")
-    (work / "areas.geojson").write_text("areas.geojson", encoding="utf-8")
+    keep = [n for n in REQUIRED if not n.startswith(("areas", "outline"))]
+    work = region.start(keep=keep)
+    assert builds.files_of(work) == sorted(keep)
+    (work / "areas").mkdir()
+    (work / "areas/index.json").write_text("other", encoding="utf-8")
+    for name in ("areas.pmtiles", "outline.geojson"):
+        (work / name).write_text(name, encoding="utf-8")
     second = region.finish()
 
     assert second != first
-    assert (region.build_dir(first) / "areas.json").read_text() == "areas.json"
-    assert (region.build_dir(second) / "areas.json").read_text() == "other"
+    assert (region.build_dir(first) / "areas/index.json").read_text() == "areas/index.json"
+    assert (region.build_dir(second) / "areas/index.json").read_text() == "other"
+
+
+def test_a_folder_is_taken_over_whole(tmp_path):
+    """`tiles` alone keeps every area bundle, not just the ones REQUIRED names."""
+    region = Region(tmp_path / "germany")
+    work = make_work(region)
+    (work / "areas/kreis-a.json").write_text("{}", encoding="utf-8")
+    region.finish()
+    work = region.start(keep=["areas/", "timeline.json"])
+    assert builds.files_of(work) == ["areas/index.json", "areas/kreis-a.json", "timeline.json"]
 
 
 def test_the_same_bytes_are_the_same_build(tmp_path):

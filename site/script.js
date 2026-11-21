@@ -26,18 +26,20 @@ import {
     TIMELINE_NOTES,
     TIMELINE_URL,
     URL_DEBOUNCE_MS,
-    areasGeojsonURL,
-    areasURL,
+    areaBundleURL,
+    areasIndexURL,
+    areasTilesURL,
     groupLabel,
     hoverStyle,
     initialMapConfig,
     farTilesURL,
+    outlineURL,
     overviewTilesURL,
     radinfraURL,
     spansURL,
     tilesURL,
 } from './config.js';
-import { createAreas } from './areas.js';
+import { createAreas, readIndex } from './areas.js';
 import { createImagery } from './imagery.js';
 import {
     bindBasemapSwitch,
@@ -45,11 +47,11 @@ import {
     buildLegend,
     createTable,
     describeArea,
-    fillAreaSelect,
     fillChangeFrom,
     renderChanges,
     swatch,
 } from './panel.js';
+import { createAreaSearch } from './search.js';
 import { createTimeline, formatDate, formatKm, formatShortDate } from './timeline.js';
 import {
     MOBILE_QUERY,
@@ -435,11 +437,13 @@ async function main() {
     maplibregl.addProtocol('pmtiles', protocol.tile);
 
     const timelineLoaded = fetchJSON(TIMELINE_URL, { fresh: true });
+    // The areas' index and the region's outline come with the timeline; an area's
+    // numbers only when it is picked, with its bundle.
     const areasLoaded = timelineLoaded.then(({ build }) => Promise.all([
-        optionalJSON(areasURL(build), 'area statistics'),
-        optionalJSON(areasGeojsonURL(build), 'area boundaries'),
+        optionalJSON(areasIndexURL(build), 'area index'),
+        optionalJSON(outlineURL(build), 'region outline'),
     ]));
-    const [timeline, style, basemap, imageryList, [areasData, areasGeojson]] = await Promise.all([
+    const [timeline, style, basemap, imageryList, [areasIndex, outline]] = await Promise.all([
         timelineLoaded,
         fetchJSON(STYLE_URL),
         basemapStyle(BASEMAP_STYLE),
@@ -447,6 +451,16 @@ async function main() {
         areasLoaded,
     ]);
     const { snapshots, build } = timeline;
+    const areaIndex = areasIndex ? readIndex(areasIndex) : null;
+    const bundles = new Map();
+    const loadBundle = (bundle) => {
+        if (!bundles.has(bundle)) {
+            const loading = fetchJSON(areaBundleURL(build, bundle));
+            loading.catch(() => bundles.delete(bundle));
+            bundles.set(bundle, loading);
+        }
+        return bundles.get(bundle);
+    };
     const readSpan = createSpanReader(spansURL(build), timeline);
     const groups = styleGroups(style);
     const groupOf = new Map(groups.flatMap((g) => {
@@ -539,7 +553,7 @@ async function main() {
         const applier = createTimeApplier(map);
         let scope = extractScope(timeline);
         const writeURL = debounce(() => writeStateToURL(snapshots, index, scope.area?.slug,
-            areasData?.areas[0]?.slug), URL_DEBOUNCE_MS);
+            areaIndex?.list[0]?.slug), URL_DEBOUNCE_MS);
         let playing = false;
         let playTimer = null;
         let changeFrom = () => 0;
@@ -588,13 +602,16 @@ async function main() {
         changeFrom = fillChangeFrom(snapshots, updateChanges);
 
         // On a phone the unfolded panel covers the map, so it folds while an
-        // Ortsteil is picked and comes back as it was afterwards.
+        // area is picked and comes back as it was afterwards.
         let reopenPanel = false;
-        const areas = areasData && areasGeojson ? createAreas(map, {
-            data: areasData,
-            geojson: areasGeojson,
+        const areas = areaIndex ? createAreas(map, {
+            index: areaIndex,
+            loadBundle,
+            tilesURL: areasTilesURL(build),
+            encoding: TILE_ENCODING,
+            outline,
             onSelect: (area) => {
-                setSelectValue(area.slug);
+                setSearchValue(area);
                 describeArea(area, areas);
                 setScope(areaScope(area, groups, snapshots));
             },
@@ -609,8 +626,10 @@ async function main() {
                 }
             },
         }) : null;
-        const setSelectValue = areas ? fillAreaSelect(areas, (slug) => areas.select(slug, { fit: slug !== areas.top.slug }))
-            : () => {};
+        const setSearchValue = areas ? createAreaSearch(
+            document.getElementById('area-search'), document.getElementById('area-results'), areas,
+            { onPick: (slug) => areas.select(slug, { fit: slug !== areas.top.slug }) },
+        ) : () => {};
         const pickButton = document.getElementById('area-pick');
         if (areas) {
             pickButton.addEventListener('click', () => areas.setPicking(!areas.picking));

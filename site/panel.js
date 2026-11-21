@@ -164,40 +164,6 @@ export function fillChangeFrom(snapshots, onChange) {
     return () => Number(select.value);
 }
 
-// The area list: the region, then each level (Bezirke, Ortsteile; or Länder,
-// Kreise, Gemeinden), each alphabetically. A name that a level has more than once
-// says where.
-const LEVEL_GROUPS = [['Land', 'Länder'], ['Kreis', 'Kreise'], ['Gemeinde', 'Gemeinden'],
-    ['Bezirk', 'Bezirke'], ['Ortsteil', 'Ortsteile']];
-
-export function fillAreaSelect(areas, onChange) {
-    const select = document.getElementById('area-select');
-    const add = (parent, area, label = area.name) => {
-        const option = document.createElement('option');
-        option.value = area.slug;
-        option.textContent = label;
-        parent.appendChild(option);
-    };
-    add(select, areas.top, `${areas.top.name} gesamt`);
-    for (const [level, label] of LEVEL_GROUPS) {
-        const list = areas.byLevel(level).filter((a) => a !== areas.top);
-        if (!list.length) continue;
-        const count = new Map();
-        for (const area of list) count.set(area.name, (count.get(area.name) ?? 0) + 1);
-        const group = document.createElement('optgroup');
-        group.label = label;
-        for (const area of list) {
-            const where = count.get(area.name) > 1 ? areas.get(area.parent)?.name : null;
-            add(group, area, where ? `${area.name} (${where})` : area.name);
-        }
-        select.appendChild(group);
-    }
-    select.addEventListener('change', () => onChange(select.value));
-    return (slug) => {
-        select.value = slug;
-    };
-}
-
 export function describeArea(area, areas) {
     const info = document.getElementById('area-info');
     const km2 = `${area.km2.toLocaleString('de-DE', { maximumFractionDigits: 1 })} km²`;

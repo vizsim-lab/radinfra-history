@@ -2,7 +2,8 @@
 
     site/data/<slug>/timeline.json          points at the current build
     site/data/<slug>/builds/<id>/           one build, never changed once made
-        timeline.json  versions.parquet  spans.bin  areas.json  areas.geojson
+        timeline.json  versions.parquet  spans.bin
+        areas/index.json  areas/<bundle>.json  areas.pmtiles  outline.geojson
         tiles.pmtiles  tiles_lo.pmtiles  tiles_far.pmtiles
 
 The bucket has the same layout (scripts/publish_b2.sh). A build's id is a hash of
@@ -33,7 +34,8 @@ import urllib.request
 from pathlib import Path
 
 # What a build has before it can be published.
-REQUIRED = ("timeline.json", "versions.parquet", "spans.bin", "areas.json", "areas.geojson",
+REQUIRED = ("timeline.json", "versions.parquet", "spans.bin",
+            "areas/index.json", "areas.pmtiles", "outline.geojson",
             "tiles.pmtiles", "tiles_lo.pmtiles", "tiles_far.pmtiles")
 ID = re.compile(r"[0-9a-f]{12}$")
 
@@ -85,7 +87,8 @@ class Region:
 
     def start(self, keep=()):
         """An empty work directory, with copies of the files `keep` of the current
-        build where it has them. Copies, not links: the steps rewrite files in place."""
+        build where it has them; a name ending in / takes a folder. Copies, not
+        links: the steps rewrite files in place."""
         if self.work.exists():
             shutil.rmtree(self.work)
         self.work.mkdir(parents=True)
@@ -96,7 +99,10 @@ class Region:
                                  "(scripts/fetch_data.sh, or the pipeline's `all` first)")
             for name in keep:
                 source = self.build_dir(build) / name
-                if source.is_file():
+                if name.endswith("/") and source.is_dir():
+                    shutil.copytree(source, self.work / name)
+                elif source.is_file():
+                    (self.work / name).parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(source, self.work / name)
         return self.work
 
