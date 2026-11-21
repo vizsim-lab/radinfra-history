@@ -503,12 +503,13 @@ async function main() {
         // Only the detail layers carry ids and names, so only they are hit-tested.
         const historyIds = groups.map((g) => historyLayerId(g, false));
 
-        const imagery = imageryList?.variants?.length ? createImagery(map, {
-            variants: imageryList.variants,
+        const imagery = imageryList?.series?.length ? createImagery(map, {
+            series: imageryList.series,
             beforeId: HOVER_LAYER_ID,
             isOwnLayer: (id) => id === HOVER_LAYER_ID || id.startsWith(LAYER_PREFIX) || id.startsWith('area-'),
+            onChange: () => describeImagery(),
         }) : null;
-        const describeImagery = bindBasemapSwitch(imagery, () => snapshots[index].date, imageryList?.variants);
+        const describeImagery = bindBasemapSwitch(imagery, () => snapshots[index].date, imageryList?.series);
 
         const legend = buildLegend(groups, snapshots, (groupId, visible) => {
             const group = groups.find((g) => g.id === groupId);

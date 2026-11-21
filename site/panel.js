@@ -202,7 +202,7 @@ export function describeArea(area, areas) {
 
 // Map or aerial photo. While the photo is on, a chip in the timeline names the
 // year it shows, so it stays in view with the panel folded.
-export function bindBasemapSwitch(imagery, currentDate, variants = []) {
+export function bindBasemapSwitch(imagery, currentDate, series = []) {
     const buttons = [...document.querySelectorAll('[data-basemap]')];
     const note = document.getElementById('aerial-note');
     const chip = document.getElementById('tl-aerial');
@@ -215,9 +215,11 @@ export function bindBasemapSwitch(imagery, currentDate, variants = []) {
         }
         return () => {};
     }
-    const years = variants.map((v) => v.label).filter(Boolean);
+    const several = series.length > 1;
+    const years = several ? [] : (series[0]?.variants ?? []).map((v) => v.label).filter(Boolean);
     const intro = `Das Luftbild folgt der Zeitleiste: zu jedem Stand das jüngste Bild davor`
-        + `${years.length ? ` (${years[0]}–${years[years.length - 1]})` : ''}.`;
+        + `${years.length ? ` (${years[0]}–${years[years.length - 1]})` : ''}`
+        + `${several ? ', soweit das Land oder die Stadt ältere Luftbilder anbietet' : ''}.`;
     note.textContent = intro;
 
     const describe = () => {
@@ -228,17 +230,21 @@ export function bindBasemapSwitch(imagery, currentDate, variants = []) {
             return;
         }
         // Before the first capture there is nothing older to show; say so.
-        const relation = v.start > currentDate()
-            ? 'das früheste verfügbare, aufgenommen nach dem gewählten Datenstand'
-            : 'das jüngste vor dem gewählten Datenstand';
+        const relation = !v.start
+            ? 'das aktuelle, ohne Aufnahmedatum'
+            : v.start > currentDate()
+                ? 'das früheste verfügbare, aufgenommen nach dem gewählten Datenstand'
+                : 'das jüngste vor dem gewählten Datenstand';
+        const name = `Luftbild ${several ? `${v.place} ` : ''}${v.label}`;
         const strong = document.createElement('strong');
-        strong.textContent = `Luftbild ${v.label}`;
+        strong.textContent = name;
         const credit = document.createElement('span');
         credit.className = 'legend-meta__credit';
         credit.textContent = v.attribution;
-        note.replaceChildren(strong, document.createTextNode(` (aufgenommen ${v.captured}), ${relation}.`), credit);
-        chip.textContent = `Luftbild ${v.label}`;
-        chip.dataset.tip = `Aufgenommen ${v.captured}, ${relation}.`;
+        const captured = v.captured ? ` (aufgenommen ${v.captured})` : '';
+        note.replaceChildren(strong, document.createTextNode(`${captured}, ${relation}.`), credit);
+        chip.textContent = name;
+        chip.dataset.tip = v.captured ? `Aufgenommen ${v.captured}, ${relation}.` : `${relation[0].toUpperCase()}${relation.slice(1)}.`;
         chip.hidden = false;
     };
     for (const button of buttons) {

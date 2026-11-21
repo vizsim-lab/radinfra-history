@@ -139,8 +139,11 @@ count; it changes the km only, not the versions or the tiles.
 **Aerial photos.** For Berlin the background can be switched to the Geoportal's
 orthophotos (2017–2026, via the codefor.de mirror). For each snapshot the newest
 photo taken on or before that date is shown, which is what mappers could have seen
-at the time; photos dated only by year count from 1 January. The capture list,
-[site/data/berlin_imagery.json](site/data/berlin_imagery.json), is generated from
+at the time; photos dated only by year count from 1 January. The capture lists,
+[site/data/berlin_imagery.json](site/data/berlin_imagery.json) and, for Germany,
+[site/data/germany_imagery.json](site/data/germany_imagery.json) (21 series of
+Länder and cities, chosen by the map's centre, a city's before its Land's), are
+generated from
 the [Editor Layer Index](https://github.com/osmlab/editor-layer-index) with
 [@osm-editor-kit/maplibre-editor-layer-index](https://github.com/osm-editor-kit/maplibre-editor-layer-index):
 

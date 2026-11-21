@@ -1,204 +1,209 @@
 {
- "series": "Berlin/Geoportal DOP20RGB",
  "source": "Editor Layer Index via @osm-editor-kit/maplibre-editor-layer-index@1.0.3",
- "variants": [
+ "series": [
   {
-   "id": "Berlin-2017",
-   "label": "2017",
-   "order": 0,
-   "captured": "2017-03-27 – 2017-03-28",
-   "start": "2017-03-27",
-   "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2017 (DOP20RGB) (codefor.de mirror)",
-   "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
-   "source": {
-    "type": "raster",
-    "tiles": [
-     "https://tiles.codefor.de/berlin/geoportal/luftbilder/2017-dop20rgb/{z}/{x}/{y}.png"
-    ],
-    "tileSize": 256,
-    "maxzoom": 20,
-    "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2017 (DOP20RGB) (codefor.de mirror)"
-   }
-  },
-  {
-   "id": "Berlin-2018",
-   "label": "2018",
-   "order": 1,
-   "captured": "2018-03-19 – 2018-04-07",
-   "start": "2018-03-19",
-   "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2018 (DOP20RGB) (codefor.de mirror)",
-   "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
-   "source": {
-    "type": "raster",
-    "tiles": [
-     "https://tiles.codefor.de/berlin/geoportal/luftbilder/2018-dop20rgb/{z}/{x}/{y}.png"
-    ],
-    "tileSize": 256,
-    "maxzoom": 20,
-    "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2018 (DOP20RGB) (codefor.de mirror)"
-   }
-  },
-  {
-   "id": "Berlin-2019",
-   "label": "2019",
-   "order": 2,
-   "captured": "2019-04-01 – 2019-04-06",
-   "start": "2019-04-01",
-   "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2019 (DOP20RGB) (codefor.de mirror)",
-   "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
-   "source": {
-    "type": "raster",
-    "tiles": [
-     "https://tiles.codefor.de/berlin/geoportal/luftbilder/2019-dop20rgb/{z}/{x}/{y}.png"
-    ],
-    "tileSize": 256,
-    "maxzoom": 20,
-    "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2019 (DOP20RGB) (codefor.de mirror)"
-   }
-  },
-  {
-   "id": "Berlin-2020",
-   "label": "2020",
-   "order": 3,
-   "captured": "2020-08",
-   "start": "2020-08-01",
-   "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2020 (DOP20RGB) (codefor.de mirror)",
-   "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
-   "source": {
-    "type": "raster",
-    "tiles": [
-     "https://tiles.codefor.de/berlin/geoportal/luftbilder/2020-truedop20rgb/{z}/{x}/{y}.png"
-    ],
-    "tileSize": 256,
-    "maxzoom": 20,
-    "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2020 (DOP20RGB) (codefor.de mirror)"
-   }
-  },
-  {
-   "id": "Berlin-2021",
-   "label": "2021",
-   "order": 4,
-   "captured": "2021-02-22",
-   "start": "2021-02-22",
-   "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2021 (DOP20RGB) (codefor.de mirror)",
-   "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
-   "source": {
-    "type": "raster",
-    "tiles": [
-     "https://tiles.codefor.de/berlin/geoportal/luftbilder/2021-dop20rgbi/{z}/{x}/{y}.png"
-    ],
-    "tileSize": 256,
-    "maxzoom": 20,
-    "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2021 (DOP20RGB) (codefor.de mirror)"
-   }
-  },
-  {
-   "id": "Berlin-2022",
-   "label": "2022",
-   "order": 5,
-   "captured": "2022-03-01 – 2022-03-09",
-   "start": "2022-03-01",
-   "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2022 (DOP20RGB) (codefor.de mirror)",
-   "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
-   "source": {
-    "type": "raster",
-    "tiles": [
-     "https://tiles.codefor.de/berlin/geoportal/luftbilder/2022-dop20rgbi/{z}/{x}/{y}.png"
-    ],
-    "tileSize": 256,
-    "maxzoom": 20,
-    "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2022 (DOP20RGB) (codefor.de mirror)"
-   }
-  },
-  {
-   "id": "Berlin-2023",
-   "label": "2023",
-   "order": 6,
-   "captured": "2023",
-   "start": "2023-01-01",
-   "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2023 (DOP20RGB) (codefor.de mirror)",
-   "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
-   "source": {
-    "type": "raster",
-    "tiles": [
-     "https://tiles.codefor.de/berlin/geoportal/luftbilder/2023-dop20rgbi/{z}/{x}/{y}.png"
-    ],
-    "tileSize": 256,
-    "maxzoom": 20,
-    "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2023 (DOP20RGB) (codefor.de mirror)"
-   }
-  },
-  {
-   "id": "Berlin-2024",
-   "label": "2024",
-   "order": 7,
-   "captured": "2024",
-   "start": "2024-01-01",
-   "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2024 (DOP20RGB) (codefor.de mirror)",
-   "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
-   "source": {
-    "type": "raster",
-    "tiles": [
-     "https://tiles.codefor.de/berlin/geoportal/luftbilder/2024-dop20rgbi/{z}/{x}/{y}.png"
-    ],
-    "tileSize": 256,
-    "maxzoom": 20,
-    "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2024 (DOP20RGB) (codefor.de mirror)"
-   }
-  },
-  {
-   "id": "Berlin-2025",
-   "label": "2025",
-   "order": 8,
-   "captured": "2025",
-   "start": "2025-01-01",
-   "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2025 (DOP20RGB) (codefor.de mirror)",
-   "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
-   "source": {
-    "type": "raster",
-    "tiles": [
-     "https://tiles.codefor.de/berlin/geoportal/luftbilder/2025-dop20rgb/{z}/{x}/{y}.png"
-    ],
-    "tileSize": 256,
-    "maxzoom": 20,
-    "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2025 (DOP20RGB) (codefor.de mirror)"
-   }
-  },
-  {
-   "id": "Berlin-2025-Summer",
-   "label": "2025 Sommer",
-   "order": 9,
-   "captured": "2025",
-   "start": "2025-01-01",
-   "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2025 (DOP20RGB) (codefor.de mirror)",
-   "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
-   "source": {
-    "type": "raster",
-    "tiles": [
-     "https://tiles.codefor.de/berlin/geoportal/luftbilder/2025-truedop20rgb/{z}/{x}/{y}.png"
-    ],
-    "tileSize": 256,
-    "maxzoom": 20,
-    "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2025 (DOP20RGB) (codefor.de mirror)"
-   }
-  },
-  {
-   "id": "Berlin-2026",
-   "label": "2026",
-   "order": 10,
-   "captured": "2026",
-   "start": "2026-01-01",
-   "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2026 (DOP20RGB) (codefor.de mirror)",
-   "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
-   "source": {
-    "type": "raster",
-    "tiles": [
-     "https://tiles.codefor.de/berlin/geoportal/luftbilder/2026-dop20rgb/{z}/{x}/{y}.png"
-    ],
-    "tileSize": 256,
-    "maxzoom": 20,
-    "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2026 (DOP20RGB) (codefor.de mirror)"
-   }
+   "place": "Berlin",
+   "coverage": {"type":"Polygon","coordinates":[[[13.295,52.392],[13.354,52.393],[13.384,52.366],[13.429,52.367],[13.443,52.385],[13.531,52.386],[13.531,52.377],[13.59,52.378],[13.62,52.36],[13.62,52.333],[13.665,52.334],[13.664,52.343],[13.679,52.343],[13.678,52.361],[13.708,52.361],[13.707,52.379],[13.751,52.398],[13.75,52.425],[13.765,52.425],[13.764,52.461],[13.734,52.46],[13.719,52.478],[13.689,52.487],[13.66,52.487],[13.659,52.513],[13.674,52.514],[13.673,52.531],[13.658,52.531],[13.628,52.558],[13.599,52.558],[13.598,52.585],[13.568,52.593],[13.538,52.593],[13.523,52.602],[13.523,52.619],[13.538,52.62],[13.536,52.656],[13.507,52.655],[13.506,52.683],[13.447,52.682],[13.433,52.673],[13.433,52.655],[13.33,52.653],[13.314,52.671],[13.27,52.67],[13.27,52.652],[13.212,52.633],[13.184,52.606],[13.14,52.605],[13.111,52.596],[13.115,52.479],[13.101,52.479],[13.103,52.434],[13.074,52.424],[13.074,52.407],[13.089,52.407],[13.119,52.389],[13.119,52.38],[13.149,52.38],[13.148,52.39],[13.192,52.39],[13.192,52.399],[13.295,52.401],[13.295,52.392]]]},
+   "variants": [
+    {
+     "id": "Berlin-2017",
+     "label": "2017",
+     "order": 0,
+     "captured": "2017-03-27 – 2017-03-28",
+     "start": "2017-03-27",
+     "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2017 (DOP20RGB) (codefor.de mirror)",
+     "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
+     "source": {
+      "type": "raster",
+      "tiles": [
+       "https://tiles.codefor.de/berlin/geoportal/luftbilder/2017-dop20rgb/{z}/{x}/{y}.png"
+      ],
+      "tileSize": 256,
+      "maxzoom": 20,
+      "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2017 (DOP20RGB) (codefor.de mirror)"
+     }
+    },
+    {
+     "id": "Berlin-2018",
+     "label": "2018",
+     "order": 1,
+     "captured": "2018-03-19 – 2018-04-07",
+     "start": "2018-03-19",
+     "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2018 (DOP20RGB) (codefor.de mirror)",
+     "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
+     "source": {
+      "type": "raster",
+      "tiles": [
+       "https://tiles.codefor.de/berlin/geoportal/luftbilder/2018-dop20rgb/{z}/{x}/{y}.png"
+      ],
+      "tileSize": 256,
+      "maxzoom": 20,
+      "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2018 (DOP20RGB) (codefor.de mirror)"
+     }
+    },
+    {
+     "id": "Berlin-2019",
+     "label": "2019",
+     "order": 2,
+     "captured": "2019-04-01 – 2019-04-06",
+     "start": "2019-04-01",
+     "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2019 (DOP20RGB) (codefor.de mirror)",
+     "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
+     "source": {
+      "type": "raster",
+      "tiles": [
+       "https://tiles.codefor.de/berlin/geoportal/luftbilder/2019-dop20rgb/{z}/{x}/{y}.png"
+      ],
+      "tileSize": 256,
+      "maxzoom": 20,
+      "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2019 (DOP20RGB) (codefor.de mirror)"
+     }
+    },
+    {
+     "id": "Berlin-2020",
+     "label": "2020",
+     "order": 3,
+     "captured": "2020-08",
+     "start": "2020-08-01",
+     "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2020 (DOP20RGB) (codefor.de mirror)",
+     "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
+     "source": {
+      "type": "raster",
+      "tiles": [
+       "https://tiles.codefor.de/berlin/geoportal/luftbilder/2020-truedop20rgb/{z}/{x}/{y}.png"
+      ],
+      "tileSize": 256,
+      "maxzoom": 20,
+      "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2020 (DOP20RGB) (codefor.de mirror)"
+     }
+    },
+    {
+     "id": "Berlin-2021",
+     "label": "2021",
+     "order": 4,
+     "captured": "2021-02-22",
+     "start": "2021-02-22",
+     "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2021 (DOP20RGB) (codefor.de mirror)",
+     "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
+     "source": {
+      "type": "raster",
+      "tiles": [
+       "https://tiles.codefor.de/berlin/geoportal/luftbilder/2021-dop20rgbi/{z}/{x}/{y}.png"
+      ],
+      "tileSize": 256,
+      "maxzoom": 20,
+      "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2021 (DOP20RGB) (codefor.de mirror)"
+     }
+    },
+    {
+     "id": "Berlin-2022",
+     "label": "2022",
+     "order": 5,
+     "captured": "2022-03-01 – 2022-03-09",
+     "start": "2022-03-01",
+     "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2022 (DOP20RGB) (codefor.de mirror)",
+     "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
+     "source": {
+      "type": "raster",
+      "tiles": [
+       "https://tiles.codefor.de/berlin/geoportal/luftbilder/2022-dop20rgbi/{z}/{x}/{y}.png"
+      ],
+      "tileSize": 256,
+      "maxzoom": 20,
+      "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2022 (DOP20RGB) (codefor.de mirror)"
+     }
+    },
+    {
+     "id": "Berlin-2023",
+     "label": "2023",
+     "order": 6,
+     "captured": "2023",
+     "start": "2023-01-01",
+     "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2023 (DOP20RGB) (codefor.de mirror)",
+     "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
+     "source": {
+      "type": "raster",
+      "tiles": [
+       "https://tiles.codefor.de/berlin/geoportal/luftbilder/2023-dop20rgbi/{z}/{x}/{y}.png"
+      ],
+      "tileSize": 256,
+      "maxzoom": 20,
+      "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2023 (DOP20RGB) (codefor.de mirror)"
+     }
+    },
+    {
+     "id": "Berlin-2024",
+     "label": "2024",
+     "order": 7,
+     "captured": "2024",
+     "start": "2024-01-01",
+     "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2024 (DOP20RGB) (codefor.de mirror)",
+     "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
+     "source": {
+      "type": "raster",
+      "tiles": [
+       "https://tiles.codefor.de/berlin/geoportal/luftbilder/2024-dop20rgbi/{z}/{x}/{y}.png"
+      ],
+      "tileSize": 256,
+      "maxzoom": 20,
+      "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2024 (DOP20RGB) (codefor.de mirror)"
+     }
+    },
+    {
+     "id": "Berlin-2025",
+     "label": "2025",
+     "order": 8,
+     "captured": "2025",
+     "start": "2025-01-01",
+     "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2025 (DOP20RGB) (codefor.de mirror)",
+     "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
+     "source": {
+      "type": "raster",
+      "tiles": [
+       "https://tiles.codefor.de/berlin/geoportal/luftbilder/2025-dop20rgb/{z}/{x}/{y}.png"
+      ],
+      "tileSize": 256,
+      "maxzoom": 20,
+      "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2025 (DOP20RGB) (codefor.de mirror)"
+     }
+    },
+    {
+     "id": "Berlin-2025-Summer",
+     "label": "2025 Sommer",
+     "order": 9,
+     "captured": "2025",
+     "start": "2025-01-01",
+     "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2025 (DOP20RGB) (codefor.de mirror)",
+     "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
+     "source": {
+      "type": "raster",
+      "tiles": [
+       "https://tiles.codefor.de/berlin/geoportal/luftbilder/2025-truedop20rgb/{z}/{x}/{y}.png"
+      ],
+      "tileSize": 256,
+      "maxzoom": 20,
+      "attribution": "Geoportal Berlin/Digitale farbige TrueOrthophotos 2025 (DOP20RGB) (codefor.de mirror)"
+     }
+    },
+    {
+     "id": "Berlin-2026",
+     "label": "2026",
+     "order": 10,
+     "captured": "2026",
+     "start": "2026-01-01",
+     "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2026 (DOP20RGB) (codefor.de mirror)",
+     "license": "https://wiki.openstreetmap.org/wiki/File:2019-06-03_Datenlizenz_Deutschland_Berlin_OSM.pdf",
+     "source": {
+      "type": "raster",
+      "tiles": [
+       "https://tiles.codefor.de/berlin/geoportal/luftbilder/2026-dop20rgb/{z}/{x}/{y}.png"
+      ],
+      "tileSize": 256,
+      "maxzoom": 20,
+      "attribution": "Geoportal Berlin/Digitale farbige Orthophotos 2026 (DOP20RGB) (codefor.de mirror)"
+     }
+    }
+   ]
   }
  ]
 }
