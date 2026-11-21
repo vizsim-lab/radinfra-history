@@ -23,7 +23,7 @@ import duckdb
 from . import snapshots as snaps
 from .areas import build_areas
 from .builds import REQUIRED, Region
-from .classify import classify_all, classify_snapshot, date_key
+from .classify import classify_all, classify_history, classify_snapshot, date_key
 from .tiles import build_tiles
 from .versions import append_snapshot, build_versions, write_spans
 
@@ -38,17 +38,29 @@ KEEP = {
 }
 
 
-def _snapshot_list(args):
-    if args.osh:
-        print(f"[snapshots] cutting {args.osh}", flush=True)
-        return snaps.cut_from_history(
-            args.osh, args.snapshot_dir, snaps.parse_date(args.start), args.step,
-            end=snaps.parse_date(args.end) if args.end else None,
-        )
+def _snapshot_files(args):
     files = [p for pattern in args.pbf for p in sorted(glob.glob(pattern))]
     if not files:
         raise SystemExit("no input: pass --osh or --pbf")
     return snaps.from_files(files)
+
+
+def _classified(args):
+    """Snapshots cut and classified: [(date, parquet)]."""
+    if not args.osh:
+        snapshot_files = _snapshot_files(args)
+        print(f"[snapshots] {len(snapshot_files)}: {snapshot_files[0][0]} … {snapshot_files[-1][0]}", flush=True)
+        print("[classify]", flush=True)
+        return classify_all(snapshot_files, args.classified_dir, args.threads, args.force)
+    plan = snaps.snapshot_plan(args.osh, snaps.parse_date(args.start), args.step,
+                               end=snaps.parse_date(args.end) if args.end else None,
+                               cache=args.snapshot_dir / "history.json")
+    print(f"[snapshots] {len(plan)} from {args.osh}: {plan[0][0]} … {plan[-1][0]}", flush=True)
+    print(f"[classify] one at a time, {args.jobs} in parallel", flush=True)
+    # The newest snapshot stays: the areas take their boundaries from it.
+    keep = [d for d, _ in plan] if args.keep_snapshots else [plan[-1][0]]
+    return classify_history(args.osh, plan, args.snapshot_dir, args.classified_dir,
+                            args.threads, args.jobs, args.force, keep)
 
 
 def _existing_classified(directory):
@@ -73,15 +85,21 @@ def main():
     source.add_argument("--date", help="update: date of the extract (default: from its header)")
     parser.add_argument("--region", default="Berlin")
     parser.add_argument("--slug", default="berlin", help="the region's folder in site/data/ and in the bucket")
-    parser.add_argument("--snapshot-dir", default=DATA / "snapshots", type=Path)
-    parser.add_argument("--classified-dir", default=DATA / "classified", type=Path)
-    parser.add_argument("--threads", type=int, default=2)
+    parser.add_argument("--snapshot-dir", type=Path, help="default data/<slug>/snapshots")
+    parser.add_argument("--classified-dir", type=Path, help="default data/<slug>/classified")
+    parser.add_argument("--threads", type=int, default=2, help="threads per OSMnexus run")
+    parser.add_argument("--jobs", type=int, default=1,
+                        help="snapshots cut and classified at the same time (--osh; memory is the limit)")
+    parser.add_argument("--keep-snapshots", action="store_true",
+                        help="--osh: keep every snapshot, not just the newest")
     parser.add_argument("--force", action="store_true", help="reclassify even if results exist")
     parser.add_argument("--boundaries-pbf", type=Path,
                         help="snapshot to take Bezirk/Ortsteil boundaries from (default: newest in --snapshot-dir)")
     parser.add_argument("--minzoom", type=int, default=9)
     parser.add_argument("--maxzoom", type=int, default=14)
     args = parser.parse_args()
+    args.snapshot_dir = args.snapshot_dir or DATA / args.slug / "snapshots"
+    args.classified_dir = args.classified_dir or DATA / args.slug / "classified"
     region = Region(SITE / "data" / args.slug)
 
     started = time.time()
@@ -90,17 +108,17 @@ def main():
         print(f"done in {time.time() - started:.0f} s", flush=True)
         return
 
-    if args.command in ("all", "snapshots", "classify"):
-        snapshot_list = _snapshot_list(args)
-        print(f"[snapshots] {len(snapshot_list)}: {snapshot_list[0][0]} … {snapshot_list[-1][0]}", flush=True)
-        if args.command == "snapshots":
-            return
-        print("[classify]", flush=True)
-        classified = classify_all(snapshot_list, args.classified_dir, args.threads, args.force)
-        if args.command == "classify":
-            return
-    else:
-        classified = None
+    if args.command == "snapshots":
+        if not args.osh:
+            raise SystemExit("snapshots: pass --osh")
+        cut = snaps.cut_from_history(args.osh, args.snapshot_dir, snaps.parse_date(args.start), args.step,
+                                     end=snaps.parse_date(args.end) if args.end else None)
+        print(f"[snapshots] {len(cut)}: {cut[0][0]} … {cut[-1][0]}", flush=True)
+        return
+    classified = _classified(args) if args.command in ("all", "classify") else None
+    if args.command == "classify":
+        print(f"done in {time.time() - started:.0f} s", flush=True)
+        return
 
     work = region.start(keep=KEEP.get(args.command, ()))
     versions_path, timeline_path = work / "versions.parquet", work / "timeline.json"

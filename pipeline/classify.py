@@ -19,13 +19,20 @@ side of a road, `yes_dual_carriageway`), else 2. The km here use it only if
 versions.COUNT_DIRECTIONS is on.
 """
 
+import shutil
 import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import duckdb
 
-from . import tools
+from . import snapshots, tools
 from .style import CATEGORY_MAP
+
+# A snapshot is not cut with less free space than this left (a Germany snapshot
+# is up to ~4.5 GB, and OSMnexus writes its raw output next to it).
+MIN_FREE_BYTES = 20e9
 
 # OSMnexus' `oneway` values that tilda-geo counts as one direction of travel.
 ONEWAY_VALUES = ("yes", "implicit_yes", "yes_dual_carriageway")
@@ -52,8 +59,10 @@ def run_osmnexus(pbf, out_dir, threads):
 
 
 def classify_snapshot(snapshot_date, pbf, out_path, threads=1):
+    """Written next to `out_path` and renamed, so a classification that is there is complete."""
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
+    part = out_path.with_name(out_path.name + ".part")
     with tempfile.TemporaryDirectory(prefix="osmnexus-") as tmp:
         raw = run_osmnexus(pbf, tmp, threads)
         con = duckdb.connect()
@@ -88,23 +97,26 @@ def classify_snapshot(snapshot_date, pbf, out_path, threads=1):
                 JOIN category_map m ON m.osmnexus = r.category
                 WHERE r.geometry IS NOT NULL
                 ORDER BY r.id
-            ) TO '{out_path}' (FORMAT parquet, COMPRESSION zstd)
+            ) TO '{part}' (FORMAT parquet, COMPRESSION zstd)
         """)
 
         rows, ids = con.execute(
-            f"SELECT count(*), count(DISTINCT id) FROM read_parquet('{out_path}')"
+            f"SELECT count(*), count(DISTINCT id) FROM read_parquet('{part}')"
         ).fetchone()
         if rows != ids:
+            part.unlink()
             raise SystemExit(f"{out_path}: {rows - ids} duplicate ids — a version would be ambiguous")
+    part.replace(out_path)
     print(f"  {snapshot_date}: {rows:,} objects", flush=True)
     return out_path
 
 
-def classify_all(snapshots, out_dir, threads=1, force=False):
-    """Classify [(date, pbf)]; reuses existing results unless `force`."""
+def classify_all(snapshot_files, out_dir, threads=1, force=False):
+    """Classify ready-made snapshots [(date, pbf)]; reuses a result newer than its
+    snapshot unless `force`."""
     out_dir = Path(out_dir)
     results = []
-    for snapshot_date, pbf in snapshots:
+    for snapshot_date, pbf in snapshot_files:
         out_path = out_dir / f"{snapshot_date.isoformat()}.parquet"
         if out_path.is_file() and not force and out_path.stat().st_mtime >= Path(pbf).stat().st_mtime:
             print(f"  {snapshot_date}: reusing {out_path}", flush=True)
@@ -112,3 +124,56 @@ def classify_all(snapshots, out_dir, threads=1, force=False):
             classify_snapshot(snapshot_date, pbf, out_path, threads)
         results.append((snapshot_date, out_path))
     return results
+
+
+def classify_history(osh, plan, snapshot_dir, out_dir, threads=1, jobs=1, force=False, keep=()):
+    """Cut and classify the snapshots of a history file one at a time, deleting
+    each snapshot once classified, so only `jobs` of them are on disk at once.
+    `plan`: [(date, at)] (snapshots.snapshot_plan); `keep`: dates whose snapshot
+    stays (the newest, for the area boundaries).
+
+    A date with a classification is not cut again unless `force`, so after an
+    interruption the same command carries on where it stopped. Newest first: the
+    largest snapshot comes first, so a run shows its peak time and memory early.
+    Returns [(date, parquet)], oldest first."""
+    snapshot_dir, out_dir = Path(snapshot_dir), Path(out_dir)
+    snapshot_dir.mkdir(parents=True, exist_ok=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    keep = set(keep)
+
+    def one(snapshot_date, at):
+        out = out_dir / f"{snapshot_date.isoformat()}.parquet"
+        pbf = snapshot_dir / f"{snapshot_date.isoformat()}.osm.pbf"
+        done = out.is_file() and not force
+        if not pbf.is_file() and (not done or snapshot_date in keep):
+            free = shutil.disk_usage(snapshot_dir).free
+            if free < MIN_FREE_BYTES:
+                raise SystemExit(f"only {free / 1e9:.0f} GB free in {snapshot_dir}: not cutting {snapshot_date}")
+            snapshots.cut_snapshot(osh, at, pbf)
+        if done:
+            print(f"  {snapshot_date}: reusing {out}", flush=True)
+        else:
+            classify_snapshot(snapshot_date, pbf, out, threads)
+        if snapshot_date not in keep:
+            pbf.unlink(missing_ok=True)
+        return snapshot_date, out, not done
+
+    started = time.time()
+    results, made = {}, 0
+    with ThreadPoolExecutor(max_workers=max(jobs, 1)) as pool:
+        futures = [pool.submit(one, d, at) for d, at in sorted(plan, reverse=True)]
+        try:
+            for future in as_completed(futures):
+                snapshot_date, out, new = future.result()
+                results[snapshot_date] = out
+                made += new
+                minutes = (time.time() - started) / 60
+                left = len(plan) - len(results)
+                eta = f", about {minutes / made * left:.0f} min left" if made and left else ""
+                print(f"[classify] {len(results)}/{len(plan)} done ({snapshot_date}), "
+                      f"{minutes:.0f} min{eta}", flush=True)
+        except BaseException:
+            for future in futures:
+                future.cancel()
+            raise
+    return sorted(results.items())

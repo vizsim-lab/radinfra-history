@@ -9,6 +9,7 @@ Snapshots cut from a history file are written without metadata (no user names,
 uids, changesets, versions or timestamps), so nothing personal leaves this step.
 """
 
+import json
 import re
 import tempfile
 from datetime import date, datetime
@@ -57,15 +58,14 @@ def extract_date(pbf):
 
 def check_coverage(pbf, bbox=HISTORY_BBOX, tolerance=0.01):
     """The extract has to cover the area of the snapshots before it."""
-    result = tools.run([tools.osmium(), "fileinfo", "-g", "header.boxes", pbf])
-    found = [float(v) for v in re.findall(r"-?\d+(?:\.\d+)?", result.stdout)]
-    if len(found) < 4:
+    found = history_bbox(pbf)
+    if found is None:
         print(f"  {pbf}: no bounding box in the header, coverage not checked", flush=True)
         return
-    west, south, east, north = found[:4]
+    west, south, east, north = found
     if (west > bbox[0] + tolerance or south > bbox[1] + tolerance
             or east < bbox[2] - tolerance or north < bbox[3] - tolerance):
-        raise SystemExit(f"{pbf}: covers {found[:4]}, less than the snapshots before it ({bbox})")
+        raise SystemExit(f"{pbf}: covers {list(found)}, less than the snapshots before it ({bbox})")
 
 
 def edited_since(pbf, way_ids, since):
@@ -87,46 +87,67 @@ def edited_since(pbf, way_ids, since):
     return sum(date.fromisoformat(s) >= since for s in stamps)
 
 
-def history_end(osh):
-    """Timestamp of the newest object version in a history file."""
+def history_end(osh, cache=None):
+    """Timestamp of the newest object version in a history file. Reading it means
+    reading the whole file (minutes for Germany), so it is kept in `cache`, a JSON
+    file, for as long as the history file is the same (size and mtime)."""
+    osh = Path(osh)
+    stat = osh.stat()
+    key = {"file": osh.name, "size": stat.st_size, "mtime": stat.st_mtime}
+    if cache and Path(cache).is_file():
+        cached = json.loads(Path(cache).read_text(encoding="utf-8"))
+        if {k: cached.get(k) for k in key} == key:
+            return datetime.fromisoformat(cached["end"])
     result = tools.run([tools.osmium(), "fileinfo", "-e", "-g", "data.timestamp.last", osh])
-    stamp = result.stdout.strip()
-    return datetime.fromisoformat(stamp.replace("Z", "+00:00"))
+    end = datetime.fromisoformat(result.stdout.strip().replace("Z", "+00:00"))
+    if cache:
+        Path(cache).parent.mkdir(parents=True, exist_ok=True)
+        Path(cache).write_text(json.dumps({**key, "end": end.isoformat()}) + "\n", encoding="utf-8")
+    return end
+
+
+def history_bbox(osh):
+    """The bounding box in a file's header, (west, south, east, north), or None."""
+    result = tools.run([tools.osmium(), "fileinfo", "-g", "header.boxes", osh])
+    found = [float(v) for v in re.findall(r"-?\d+(?:\.\d+)?", result.stdout)]
+    return tuple(found[:4]) if len(found) >= 4 else None
+
+
+def snapshot_plan(osh, start, step_months, end=None, cache=None):
+    """The snapshots of a history file, [(date, at)] oldest first: every step from
+    `start`, and the file's own end, so the map always reaches the newest state the
+    file knows, even between two regular steps. `at` is the time to cut at, None for
+    the end (osmium then takes the newest visible version of everything)."""
+    file_end = history_end(osh, cache)
+    last = min(end, file_end.date()) if end else file_end.date()
+    dates = regular_dates(start, last, step_months)
+    plan = [(d, f"{d.isoformat()}T00:00:00Z") for d in dates]
+    if end is None and (not dates or file_end.date() > dates[-1]):
+        plan.append((file_end.date(), None))
+    return plan
+
+
+def cut_snapshot(osh, at, path):
+    """One snapshot, without metadata. Written next to `path` and renamed, so a
+    snapshot that is there is complete."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    part = path.with_name(path.name + ".part")
+    tools.run([
+        tools.osmium(), "time-filter", osh, *([at] if at else []),
+        "-o", part, "-f", "pbf,add_metadata=false", "--overwrite", "--no-progress",
+    ])
+    part.replace(path)
+    return path
 
 
 def cut_from_history(osh, out_dir, start, step_months, end=None):
-    """Cut snapshots out of a history file. Returns [(date, path)], oldest first.
-
-    The last snapshot is the file's own end, so the map always reaches the newest
-    state the history file knows, even between two regular steps.
-    """
-    osh = Path(osh)
+    """Cut all snapshots out of a history file and keep them. Returns [(date, path)],
+    oldest first. (`all` and `classify` cut them one at a time instead:
+    classify.classify_history.)"""
     out_dir = Path(out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    file_end = history_end(osh)
-    last = min(end, file_end.date()) if end else file_end.date()
-    dates = regular_dates(start, last, step_months)
-
-    snapshots = []
-    for d in dates:
-        path = out_dir / f"{d.isoformat()}.osm.pbf"
-        tools.run([
-            tools.osmium(), "time-filter", osh, f"{d.isoformat()}T00:00:00Z",
-            "-o", path, "-f", "pbf,add_metadata=false", "--overwrite", "--no-progress",
-        ])
-        snapshots.append((d, path))
-
-    if end is None and (not dates or file_end.date() > dates[-1]):
-        # No time argument: osmium takes the newest visible version of everything.
-        d = file_end.date()
-        path = out_dir / f"{d.isoformat()}.osm.pbf"
-        tools.run([
-            tools.osmium(), "time-filter", osh,
-            "-o", path, "-f", "pbf,add_metadata=false", "--overwrite", "--no-progress",
-        ])
-        snapshots.append((d, path))
-    return snapshots
+    return [(d, cut_snapshot(osh, at, out_dir / f"{d.isoformat()}.osm.pbf"))
+            for d, at in snapshot_plan(osh, start, step_months, end, cache=out_dir / "history.json")]
 
 
 _ISO = re.compile(r"(\d{4})-(\d{2})-(\d{2})")

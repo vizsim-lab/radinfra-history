@@ -23,10 +23,10 @@ Not a publication of radinfra.de or FixMyCity.
 berlin-internal.osh.pbf                 full history, with personal metadata
   │  osmium time-filter, every 3 months, metadata stripped
   ▼
-data/snapshots/<date>.osm.pbf           the state of OSM at each date
+data/berlin/snapshots/<date>.osm.pbf    the state of OSM at each date
   │  OSMnexus, configs/tilda (bikelanes topic)
   ▼
-data/classified/<date>.parquet          radinfra categories per way / side of a road
+data/berlin/classified/<date>.parquet   radinfra categories per way / side of a road
   │  pipeline/versions.py
   ▼                                     one build: site/data/berlin/builds/<id>/
 versions.parquet                        every distinct version once, with a lifespan
@@ -208,7 +208,11 @@ published build instead. Locally the page reads `site/data/`; with `?data=remote
 it reads the bucket.
 
 Each step also runs on its own (`snapshots`, `classify`, `versions`, `areas`, `tiles`);
-classifications are reused unless `--force`. Instead of a history file, dated
+classifications are reused unless `--force`. From a history file, `all` and
+`classify` cut one snapshot at a time, classify it and delete it again (all but the
+newest, for the area boundaries; `--keep-snapshots` keeps them), so a run that
+stops carries on where it was when started again. `--jobs N` works on N snapshots
+at once; memory is the limit. Instead of a history file, dated
 extracts work too, such as Geofabrik's yearly public `berlin-YYMMDD.osm.pbf`:
 
 ```bash
