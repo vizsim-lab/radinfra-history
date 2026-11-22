@@ -10,7 +10,8 @@
 //
 //     replaced in − replaced out  +  added − reduced  +  new − gone,
 //
-// and the first part is what a reader should not take for building.
+// and the first part is no new network, whatever happened in the street. The page
+// says what OSM holds at a place, never why: built or only mapped, the data cannot tell.
 
 import { formatKmNumber } from './timeline.js';
 
@@ -67,18 +68,17 @@ export function splitChanges(changes, groups, kmByGroup, from, to) {
     return { parts, total };
 }
 
-// Per snapshot, what happened since the one before: km whose legend row changed at
-// the same place (retagged), and km at places new or gone. Index 0 has nothing.
+// Per snapshot, how many km changed in OSM since the one before: came, went, or
+// took another legend row, each place once (a cycleway moved from the road's tags
+// to a way of its own is one change, a moved node none). Index 0 has nothing.
 export function stepChanges(changes, count) {
-    const steps = Array.from({ length: count }, (_, i) => (i ? { retagged: 0, newPlaces: 0, gone: 0 } : null));
+    const steps = Array.from({ length: count }, (_, i) => (i ? { changed: 0 } : null));
     if (!changes) return steps.map(() => null);
-    for (const [step, , , , sNew, , , eGone] of changes.rows) {
-        if (!steps[step]) continue;
-        steps[step].newPlaces += sNew;
-        steps[step].gone += eGone;
+    for (const [step, , , sAdd, sNew, , eRed, eGone] of changes.rows) {
+        if (steps[step]) steps[step].changed += sAdd + sNew + eRed + eGone;
     }
     for (const [step, g, source, km] of changes.flows) {
-        if (steps[step] && g !== source) steps[step].retagged += km;
+        if (steps[step] && g !== source) steps[step].changed += km;
     }
     return steps;
 }
@@ -131,23 +131,23 @@ export function changeHints(split, groups, { totalKm, fromDate }) {
         const { group, part } = lead;
         notice = part.delta > 0
             ? `Seit ${fromDate}: Von ${formatDelta(part.delta)} km „${group.label}“ waren ${km(part.replaced)} `
-                + 'vorher schon erfasst, als andere Führungsform (umgetaggt).'
+                + 'vorher schon als andere Führungsform erfasst.'
             : `Seit ${fromDate}: „${group.label}“ ${formatDelta(part.delta)} km, davon ${km(part.replaced)} `
-                + 'umgetaggt, nicht verschwunden.';
+                + 'jetzt als andere Führungsform erfasst.';
         const more = rows.length - 1;
         if (more) notice += ` Ähnlich bei ${more === 1 ? 'einer weiteren Führungsform' : `${more} weiteren Führungsformen`}.`;
     }
     return { mostly: new Set(rows.map(({ group }) => group.id)), whole, notice, minKm };
 }
 
-// The note under a row of the change table that changed mostly by retagging.
-// "Umgetaggt": the tags changed and the place did not; whether the street was
-// rebuilt too, the data cannot say, so the note does not either.
+// The note under a row of the change table that changed mostly at places with
+// another category before or after. It says what OSM holds there, not why: whether
+// the street was rebuilt or only mapped otherwise, the data cannot say.
 export function retagNote(part, groups) {
     const labelOf = (id) => groups.find((g) => g.id === id)?.label ?? id;
     const other = part.replaced > 0 ? largest(part.from, labelOf) : largest(part.to, labelOf);
     const when = part.replaced > 0 ? 'vorher' : 'jetzt';
-    return `davon ${km(part.replaced)} umgetaggt${other ? `: ${when} an denselben Stellen meist ${other}` : ''}`;
+    return `davon ${km(part.replaced)} ${when} als andere Führungsform erfasst${other ? `, meist ${other}` : ''}`;
 }
 
 // The tooltip of a row of the change table: its change, split.
@@ -156,11 +156,11 @@ export function partTip(label, part, groups) {
     const lines = [`${label}: ${formatDelta(part.delta)} km.`];
     if (Math.abs(part.replaced) >= 0.05) {
         const other = part.replaced > 0 ? largest(part.from, labelOf, 3) : largest(part.to, labelOf, 3);
-        lines.push(`Umgetaggt, an denselben Stellen: ${formatDelta(part.replaced)} km`
-            + `${other ? ` (${part.replaced > 0 ? 'vorher' : 'jetzt'} ${other})` : ''}.`);
+        lines.push(`An Stellen, die ${part.replaced > 0 ? 'vorher' : 'jetzt'} als andere Führungsform erfasst `
+            + `sind: ${formatDelta(part.replaced)} km${other ? ` (${other})` : ''}.`);
     }
     if (Math.abs(part.added) >= 0.05) lines.push(`An erfassten Stellen dazu oder weg: ${formatDelta(part.added)} km.`);
-    if (part.newPlaces >= 0.05) lines.push(`An neuen Stellen: +${km(part.newPlaces)}.`);
+    if (part.newPlaces >= 0.05) lines.push(`An Stellen, an denen vorher nichts erfasst war: +${km(part.newPlaces)}.`);
     if (part.gone >= 0.05) lines.push(`Stellen, an denen nichts mehr ist: −${km(part.gone)}.`);
     return lines.join(' ');
 }

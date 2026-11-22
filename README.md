@@ -182,16 +182,20 @@ on a synthetic Germany a step takes about 15 s.
 
 The areas get these numbers with their km (`chg`, `fl` in the bundles, see
 [pipeline/areas.py](pipeline/areas.py)), and the page uses them so that a retagging
-is not read as building:
+is not read as building. They say what OSM holds at a place, never why: whether a
+street was rebuilt or only mapped otherwise, the data cannot tell, so the page does
+not claim it either.
 
-- a row of the change table that grew or shrank mostly by retagging gets a note
-  under it ("davon 20 km umgetaggt: vorher an denselben Stellen meist „Führungsform
-  unklar“ …"), every row's tooltip splits its difference, and a sentence above the
-  table says how much came at places where nothing was;
+- a row of the change table whose difference lies mostly at places with another
+  category before or after gets a note under it ("davon 20 km vorher als andere
+  Führungsform erfasst, meist „Führungsform unklar“ …"), every row's tooltip splits
+  its difference, and a sentence above the table says how much came at places where
+  nothing was;
 - under the legend, a notice names the largest such row since the change table's
   start date, with a link to the table;
-- the timeline has a bar per step for the km whose category changed at the same
-  place, and its tooltip says what came at new places and what went;
+- the timeline has a bar per step for the km that changed in OSM then (came, went,
+  or took another category, each place once), and its tooltip sets them against
+  what that did to the sum: much changed and a flat line means rearranged;
 - the popup says what was at the place before a category and after it when the
   way id does not: "an dieser Stelle, als Tag an der Straße: keine neue Stelle", or
   "an dieser Stelle nichts: neu gebaut oder erstmals kartiert".
@@ -241,11 +245,12 @@ any snapshot with the one selected on the timeline.
 - When a cycleway moves from tags on the road to a way of its own, its line moves
   a few metres. That is a change in mapping, not new infrastructure; the split by
   place (above) counts it as replaced.
-- The split cannot tell everything apart. "Umgetaggt" can be a rebuilt street
-  (a lane that got bollards); "neue Stellen" can be infrastructure mapped for the
-  first time, as campaigns do by the hundreds of kilometres; and a tag taken off a
-  footway that is still there (`bicycle=yes` removed) counts as gone, as the data
-  holds nothing about ways that carry no cycling infrastructure.
+- The split tells places apart, not causes. Another category at the same place
+  can be a rebuilt street (a lane that got bollards) as well as a correction; a new
+  place can be infrastructure mapped for the first time, as campaigns do by the
+  hundreds of kilometres; and a tag taken off a footway that is still there
+  (`bicycle=yes` removed) counts as gone, as the data holds nothing about ways that
+  carry no cycling infrastructure.
 - Snapshot granularity: a change is dated to the snapshot it first appears in; the
   popup says between which two snapshots it happened.
 - Such changes of mapping are regional. In Berlin, the dip from 2021 to 2024 (about

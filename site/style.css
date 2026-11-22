@@ -1040,13 +1040,13 @@ select {
     fill: var(--ui-text-muted);
 }
 
-/* What changed category at the same place, step by step: amber, as the hints. */
-.tl-retag rect {
+/* What changed in OSM, step by step: amber, as the notes on OSM's state. */
+.tl-activity rect {
     fill: #f59e0b;
     opacity: 0.32;
 }
 
-.tl-retag-key rect {
+.tl-activity-key rect {
     fill: #f59e0b;
     opacity: 0.5;
 }
