@@ -5,6 +5,7 @@
     uv run python -m pipeline update --pbf berlin-latest.osm.pbf
 
 Steps, each also runnable on its own: snapshots -> classify -> versions -> areas -> tiles.
+`versions` also splits every change by place (pipeline/changes.py) for areas and popup.
 `update` adds one newer extract to existing versions (the quarterly workflow).
 Every command from `versions` on makes a new build in site/data/<slug>/
 (pipeline/builds.py); `areas` or `tiles` alone take the rest from the current one.
@@ -24,6 +25,7 @@ from . import regions
 from . import snapshots as snaps
 from .areas import build_areas, current_slugs
 from .builds import REQUIRED, Region
+from .changes import write_changes
 from .classify import classify_all, classify_history, classify_snapshot, date_key
 from .tiles import build_tiles
 from .versions import append_snapshot, build_versions, write_spans
@@ -33,7 +35,7 @@ SITE = Path("site")
 
 # Files of the current build a command takes over: what it does not make anew and
 # what does not depend on what it makes. New versions change everything else.
-VERSIONS = ["timeline.json", "versions.parquet", "spans.bin"]
+VERSIONS = ["timeline.json", "versions.parquet", "spans.bin", "changes.parquet"]
 AREAS = ["areas/", "areas.pmtiles", "outline.geojson"]
 TILES = ["tiles.pmtiles", "tiles_lo.pmtiles", "tiles_far.pmtiles"]
 KEEP = {"areas": VERSIONS + TILES, "tiles": VERSIONS + AREAS}
@@ -138,17 +140,19 @@ def main():
 
     work = region.start(keep=KEEP.get(args.command, ()))
     versions_path, timeline_path = work / "versions.parquet", work / "timeline.json"
+    changes_path = work / "changes.parquet"
     if args.command in ("all", "versions"):
         print("[versions]", flush=True)
         build_versions(classified or _existing_classified(args.classified_dir),
                        versions_path, timeline_path, region=args.spec.name, coverage=_coverage(args, region))
-        write_spans(versions_path, timeline_path, work / "spans.bin")
+        write_changes(versions_path, timeline_path, changes_path)
+        write_spans(versions_path, timeline_path, work / "spans.bin", changes_path)
 
     if args.command in ("all", "areas"):
         print("[areas]", flush=True)
         boundaries = args.boundaries_pbf or max(
             Path(args.snapshot_dir).glob("*.osm.pbf"), key=snaps.date_from_filename)
-        build_areas(boundaries, versions_path, timeline_path, work, region=args.spec)
+        build_areas(boundaries, versions_path, timeline_path, work, region=args.spec, changes_parquet=changes_path)
 
     if args.command in ("all", "tiles"):
         print("[tiles]", flush=True)
@@ -199,9 +203,12 @@ def _update(args, region):
     keep_areas = current_slugs(old)
     work = region.start(keep=("timeline.json", "versions.parquet"))
     versions_path, timeline_path = work / "versions.parquet", work / "timeline.json"
+    changes_path = work / "changes.parquet"
     print("[versions]", flush=True)
     append_snapshot(versions_path, timeline_path, classified, snapshot_date)
-    write_spans(versions_path, timeline_path, work / "spans.bin")
+    # Anew for every step: the one before the new snapshot can change with it (WINDOW).
+    write_changes(versions_path, timeline_path, changes_path)
+    write_spans(versions_path, timeline_path, work / "spans.bin", changes_path)
     # A new or changed category needs an edit of the way's tags, so nearly all of
     # those ways should have been edited since the last snapshot. Far fewer would
     # mean that the extract differs, not OSM.
@@ -213,7 +220,8 @@ def _update(args, region):
           + (f"{edited:,} of them edited in OSM since {last}" if edited is not None
              else "the extract has no timestamps to check them"), flush=True)
     print("[areas]", flush=True)
-    build_areas(pbf, versions_path, timeline_path, work, region=args.spec, keep=keep_areas)
+    build_areas(pbf, versions_path, timeline_path, work, region=args.spec, keep=keep_areas,
+                changes_parquet=changes_path)
     print("[tiles]", flush=True)
     build_tiles(versions_path, work / "tiles.pmtiles", args.minzoom, args.maxzoom)
     build = region.finish()

@@ -11,10 +11,22 @@ counts with its full length; one that crosses the boundary counts with the part
 inside, as radinfra.de's Statistik does. Lengths count as everywhere else
 (versions.counted_m): per side of the road and per way.
 
+Where the km change, by pipeline/changes.py (changes.parquet in the build), goes
+in with them: each version's start and end split by its shares, with the part of a
+line inside the area, so that an area's change splits like the region's.
+
 Writes, into the build:
 
     areas/index.json      every area: name, level, parent, bundle, km², bbox
-    areas/<bundle>.json   km per legend row and snapshot, for the areas of a Kreis
+    areas/<bundle>.json   for the areas of a Kreis:
+                          km   km per legend row and snapshot
+                          chg  [step, row, replaced, added, new, replaced, reduced, gone]:
+                               km that started at a step (snapshot index) as replaced,
+                               added or new, and km that ended there as replaced,
+                               reduced or gone; `row` indexes the index's `groups`
+                          fl   [step, row, from row, km]: started as replaced, by the
+                               legend row of what each line replaced most, where
+                               that is another row
     areas.pmtiles         the boundaries as tiles (outline, dimming, picking)
     outline.geojson       the region's own outline, simplified
 """
@@ -33,7 +45,7 @@ import shapely
 from . import tools
 from .style import legend_groups
 from .tiles import run_manby
-from .versions import counted_m, geometry_lengths_m
+from .versions import OPEN_END, counted_m, geometry_lengths_m
 
 # OSM's admin levels in Germany, as the page names them.
 LEVELS = {"2": "Staat", "4": "Land", "6": "Kreis", "8": "Gemeinde", "9": "Bezirk", "10": "Ortsteil"}
@@ -190,11 +202,11 @@ def _assign_slugs(areas):
         raise SystemExit(f"area slugs are not unique: {sorted(duplicates)}")
 
 
-def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_dir, region, keep=()):
+def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_dir, region, keep=(), changes_parquet=None):
     """Into `out_dir` (a build's work folder). `region`: its entry in
     pipeline/regions.py. `keep`: slugs that must still
     be there (the quarterly update passes the current ones, so an extract with a
-    broken boundary cannot drop an area)."""
+    broken boundary cannot drop an area). Without `changes_parquet`, no `chg` or `fl`."""
     timeline = json.loads(Path(timeline_json).read_text(encoding="utf-8"))
     n = len(timeline["snapshots"])
     groups = legend_groups()
@@ -211,12 +223,31 @@ def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_dir, region, 
     con = duckdb.connect()
     last_vid = con.execute(f"SELECT coalesce(max(vid), 0) FROM read_parquet('{versions_parquet}')").fetchone()[0]
     diff = np.zeros((len(areas), len(groups), n + 1))
+    split = changes_parquet is not None and Path(changes_parquet).is_file()
+    if split:
+        # km that start and end per area, legend row and step: replaced, added, new;
+        # replaced, reduced, gone. Replaced starts also by the row they replaced.
+        cells = len(areas) * len(groups) * (n + 1)
+        moved = np.zeros((6, cells))
+        flow_keys, flow_km = [], []
+        con.execute("CREATE TEMP TABLE row_of (row_category VARCHAR, row_gi INTEGER)")
+        con.executemany("INSERT INTO row_of VALUES (?, ?)", list(group_of.items()))
+        joined = f"""LEFT JOIN (SELECT vid, s_rep, s_add, s_new, s_from, e_rep, e_red, e_gone
+                               FROM read_parquet('{changes_parquet}')) c USING (vid)
+                     LEFT JOIN row_of r ON r.row_category = c.s_from"""
+        # Without a split (no start, or no end), a version counts as new or gone.
+        extra = (", t, coalesce(s_rep, 0) AS s_rep, coalesce(s_add, 0) AS s_add, coalesce(s_new, 1) AS s_new, "
+                 "coalesce(r.row_gi, -1) AS from_gi, "
+                 "coalesce(e_rep, 0) AS e_rep, coalesce(e_red, 0) AS e_red, coalesce(e_gone, 1) AS e_gone")
+    else:
+        joined, extra = "", ""
     # What the newest snapshot changed, and how much of it in the region: a new
     # kind of extract would show up as changes outside, at its edge.
     changes = np.zeros(4, dtype=np.int64)  # start, end, start inside, end inside
     for first in range(1, last_vid + 1, LINE_CHUNK):
         cols = con.execute(
-            f"SELECT category, k0, k1, dirs, length_m, geometry::BLOB AS wkb FROM read_parquet('{versions_parquet}') "
+            f"SELECT category, k0, k1, dirs, length_m, geometry::BLOB AS wkb{extra} "
+            f"FROM read_parquet('{versions_parquet}') {joined} "
             "WHERE vid >= ? AND vid < ?", [first, first + LINE_CHUNK]
         ).fetchnumpy()
         lines = shapely.from_wkb(np.asarray([bytes(b) for b in cols["wkb"]], dtype=object))
@@ -241,6 +272,22 @@ def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_dir, region, 
 
         np.add.at(diff, (area_i, gi[line_i], k0[line_i]), length)
         np.add.at(diff, (area_i, gi[line_i], k1[line_i] + 1), -length)
+        if split:
+            cell = (area_i * len(groups) + gi[line_i]) * (n + 1)
+            starts = k0[line_i] >= 1
+            ends = np.asarray(cols["t"])[line_i] != OPEN_END
+            for j, (name, rows, step) in enumerate((
+                    ("s_rep", starts, k0), ("s_add", starts, k0), ("s_new", starts, k0),
+                    ("e_rep", ends, k1 + 1), ("e_red", ends, k1 + 1), ("e_gone", ends, k1 + 1))):
+                share = np.asarray(cols[name], dtype=float)[line_i]
+                moved[j] += np.bincount((cell + step[line_i])[rows], weights=(length * share)[rows], minlength=cells)
+            replaced = np.asarray(cols["s_rep"], dtype=float)[line_i]
+            from_gi = np.asarray(cols["from_gi"], dtype=np.int64)[line_i]
+            # Between legend rows only: within one, a replaced line is an edit.
+            take = starts & (replaced > 0) & (from_gi >= 0) & (from_gi != gi[line_i])
+            if take.any():
+                flow_keys.append((cell[take] + k0[line_i][take]) * len(groups) + from_gi[take])
+                flow_km.append(length[take] * replaced[take])
 
         in_region = np.zeros(len(lines), dtype=bool)
         in_region[line_i[area_i == 0]] = True
@@ -252,14 +299,16 @@ def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_dir, region, 
     for a in range(len(areas)):
         series = {}
         for g, group in enumerate(groups):
-            values = np.round(km[a, g], 2)
+            values = np.round(km[a, g], 2) + 0.0  # no -0.0 where a category empties
             if values.any():
                 series[group["id"]] = [float(v) for v in values]
-        numbers.append(series)
+        numbers.append({"km": series})
+    if split:
+        _add_split(numbers, moved, flow_keys, flow_km, len(groups), n)
     index = _write(Path(out_dir), areas, aliases, numbers, timeline, groups)
 
     top = areas[0]
-    top_now = sum(v[-1] for v in numbers[0].values())
+    top_now = sum(v[-1] for v in numbers[0]["km"].values())
     per_level = defaultdict(int)
     for area in areas[1:]:
         per_level[area["level"]] += 1
@@ -268,6 +317,28 @@ def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_dir, region, 
     print(f"  newest snapshot: {changes[0]:,} versions start, {changes[1]:,} end; "
           f"in {top['name']} {changes[2]:,} and {changes[3]:,}", flush=True)
     return index
+
+
+def _add_split(numbers, moved, flow_keys, flow_km, n_groups, n):
+    """`chg` and `fl` for every area (module docstring), in km to 10 m."""
+    moved = np.round(moved / 1000.0, 2).reshape(6, len(numbers), n_groups, n + 1)
+    for a, entry in enumerate(numbers):
+        cells = moved[:, a]
+        rows, steps = np.nonzero(np.abs(cells).sum(axis=0))
+        entry["chg"] = sorted([int(k), int(r), *(float(v) for v in cells[:, r, k])] for r, k in zip(rows, steps))
+        entry["fl"] = []
+    if not flow_keys:
+        return
+    keys, inverse = np.unique(np.concatenate(flow_keys), return_inverse=True)
+    km = np.round(np.bincount(inverse, weights=np.concatenate(flow_km)) / 1000.0, 2)
+    keys, km = keys[km != 0], km[km != 0]
+    cell, source = np.divmod(keys, n_groups)
+    area, rest = np.divmod(cell, n_groups * (n + 1))
+    row, step = np.divmod(rest, n + 1)
+    for a, k, r, f, v in zip(area, step, row, source, km):
+        numbers[a]["fl"].append([int(k), int(r), int(f), float(v)])
+    for entry in numbers:
+        entry["fl"].sort()
 
 
 def _bundles(areas):
@@ -302,8 +373,8 @@ def _write(out_dir, areas, aliases, numbers, timeline, groups):
     }
     _write_json(folder / "index.json", index)
     contents = defaultdict(dict)
-    for area, bundle, series in zip(areas, bundles, numbers):
-        contents[bundle][area["slug"]] = {"km": series}
+    for area, bundle, entry in zip(areas, bundles, numbers):
+        contents[bundle][area["slug"]] = entry
     for bundle, entries in contents.items():
         _write_json(folder / f"{bundle}.json", {"areas": entries})
 

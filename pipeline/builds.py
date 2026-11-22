@@ -2,7 +2,7 @@
 
     site/data/<slug>/timeline.json          points at the current build
     site/data/<slug>/builds/<id>/           one build, never changed once made
-        timeline.json  versions.parquet  spans.bin
+        timeline.json  versions.parquet  spans.bin  changes.parquet
         areas/index.json  areas/<bundle>.json  areas.pmtiles  outline.geojson
         tiles.pmtiles  tiles_lo.pmtiles  tiles_far.pmtiles
 
@@ -34,7 +34,7 @@ import urllib.request
 from pathlib import Path
 
 # What a build has before it can be published.
-REQUIRED = ("timeline.json", "versions.parquet", "spans.bin",
+REQUIRED = ("timeline.json", "versions.parquet", "spans.bin", "changes.parquet",
             "areas/index.json", "areas.pmtiles", "outline.geojson",
             "tiles.pmtiles", "tiles_lo.pmtiles", "tiles_far.pmtiles")
 ID = re.compile(r"[0-9a-f]{12}$")

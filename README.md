@@ -33,12 +33,17 @@ data/germany/classified/<date>.parquet  radinfra categories per way / side of a 
   │  pipeline/versions.py
   ▼                                     one build: site/data/germany/builds/<id>/
 versions.parquet                        every distinct version once, with a lifespan
+  │  pipeline/changes.py
+  ▼
+changes.parquet                         where each version's start and end lie: at a
+  │                                       place mapped before, or at a new one
   │  pipeline/areas.py (OSM boundaries)     │  manby (tippecanoe-compatible), MLT
   ▼                                         ▼
 areas/index.json                        tiles_far.pmtiles, tiles_lo.pmtiles, tiles.pmtiles
   every area: name, level, parent, box    z5–8, z9–11 and z12–14, for all dates
 areas/<Kreis>.json                      spans.bin
-  km per category, snapshot and area      the popup's dates, 6 bytes per version
+  km per category, snapshot and area,     the popup's dates and places, 8 bytes per
+  and where they changed                  version
 areas.pmtiles, outline.geojson          timeline.json
   the boundaries                          km per category and snapshot (whole extract)
 ```
@@ -97,10 +102,13 @@ of its category, which the popup shows instead of `f` and `t`:
 - `pc`, `nc` — the category in the snapshot before and after that run, if the
   object was drawn there
 
-These four are not in the tiles. The build's `spans.bin` holds them as six
-bytes per version at offset `vid × 6` (`cf`, `ct` as snapshot indices, `pc`, `nc`
-as indices into the timeline's `categories`), and a click reads its six bytes with
-one range request. Without them the detail tiles are about a seventh smaller.
+These four are not in the tiles. The build's `spans.bin` holds them as eight
+bytes per version at offset `vid × 8` (`cf`, `ct` as snapshot indices, `pc`, `nc`
+as indices into the timeline's `categories`, then `pm` and `nm`: what was at the
+place before the run and is after it, see below), and a click reads its eight bytes
+with one range request. Without them the detail tiles are about a seventh smaller.
+The timeline names the size of a record (`span_size`; builds before November 2026
+had six bytes, without `pm` and `nm`).
 
 From z9 on no feature is dropped (`--no-feature-limit --no-tile-size-limit`).
 tippecanoe's usual `--drop-densest-as-needed` would thin out versions unevenly, and
@@ -145,6 +153,52 @@ directions were added and tracks redrawn as one-way ways of their own.
 `COUNT_DIRECTIONS` in [pipeline/versions.py](pipeline/versions.py) switches to that
 count; it changes the km only, not the versions or the tiles.
 
+**Where the km change.** A category's km grow when a road side or a way is drawn
+with it, whatever else happened: a cycleway built, one mapped for the first time,
+or one mapped before and now tagged otherwise. The last is common, and campaigns
+such as radinfra.de's own make it more so, so the build sorts every change by
+place ([pipeline/changes.py](pipeline/changes.py)). Between two snapshots a
+category changes by what starts there minus what ends there (a version's `f` and
+`t`); every metre that starts is
+
+- **replaced** if something that was there before ended near it in the same step:
+  the same place, retagged, redrawn, split, or moved from the road's tags to a way
+  of its own, or rebuilt, which the data cannot tell apart;
+- **added** if not, but something else that stays was there already (a way of its
+  own next to a lane, a duplicate);
+- **new** otherwise: a place with nothing before, newly built or newly mapped,
+
+and every metre that ends is **replaced**, **reduced** or **gone** the same way
+round. So a category's change splits exactly into replaced, added and new, for any
+two snapshots. Ids play no part: a way that is split or redrawn gets new ones.
+"Near" is within 20 m. A road's sides share its centreline, so for this each side
+is moved 5 m to its side and meets another side only within 4 m: a new second side
+is not taken for the first, a reversed way keeps its side. A way of its own is
+often drawn a quarter before or after its road's tags say `separate`, so
+"replaced" also looks one step either way, but only at objects that appeared or
+vanished there, not at edits. The newest step can still change with the next
+snapshot. `changes.parquet` holds each version's shares and what it replaced most;
+on a synthetic Germany a step takes about 15 s.
+
+The areas get these numbers with their km (`chg`, `fl` in the bundles, see
+[pipeline/areas.py](pipeline/areas.py)), and the page uses them so that a retagging
+is not read as building:
+
+- a row of the change table that grew or shrank mostly by retagging gets a note
+  under it ("davon 20 km umgetaggt: vorher an denselben Stellen meist „Führungsform
+  unklar“ …"), every row's tooltip splits its difference, and a sentence above the
+  table says how much came at places where nothing was;
+- under the legend, a notice names the largest such row since the change table's
+  start date, with a link to the table;
+- the timeline has a bar per step for the km whose category changed at the same
+  place, and its tooltip says what came at new places and what went;
+- the popup says what was at the place before a category and after it when the
+  way id does not: "an dieser Stelle, als Tag an der Straße: keine neue Stelle", or
+  "an dieser Stelle nichts: neu gebaut oder erstmals kartiert".
+
+On its own, `uv run python -m pipeline.changes --region germany --from 2020-01-01`
+prints the split for a build (`--bbox` for part of it, `--csv` for every step).
+
 **Aerial photos.** The background can be switched to the orthophotos of the Land
 or city at the map's centre, a city's before its Land's (18 series; none for Bayern
 statewide, Schleswig-Holstein and Bremen in the index). For each snapshot the newest
@@ -185,11 +239,18 @@ any snapshot with the one selected on the timeline.
   rules, which keeps the method constant, but older tagging lands more often in
   "Führungsform unklar".
 - When a cycleway moves from tags on the road to a way of its own, its line moves
-  a few metres. That is a change in mapping, not new infrastructure.
+  a few metres. That is a change in mapping, not new infrastructure; the split by
+  place (above) counts it as replaced.
+- The split cannot tell everything apart. "Umgetaggt" can be a rebuilt street
+  (a lane that got bollards); "neue Stellen" can be infrastructure mapped for the
+  first time, as campaigns do by the hundreds of kilometres; and a tag taken off a
+  footway that is still there (`bicycle=yes` removed) counts as gone, as the data
+  holds nothing about ways that carry no cycling infrastructure.
 - Snapshot granularity: a change is dated to the snapshot it first appears in; the
   popup says between which two snapshots it happened.
 - Such changes of mapping are regional. In Berlin, the dip from 2021 to 2024 (about
-  −400 km for Berlin's extract, marked on Berlin's timeline) is mostly one, not a
+  −400 km for Berlin's extract, marked on the timeline while Berlin or a part of it
+  is picked: `AREA_NOTES` in [site/config.js](site/config.js)) is mostly one, not a
   change of the streets. Checked by object
   and in a sample of the ways' tags: on 533 km of road sides the track tag went,
   mostly `cycleway:*=track` → `separate`, and the new ways of their own cover
@@ -297,7 +358,8 @@ Berlin; Germany's quarterly update is to follow, until then by hand
 Geofabrik's public `berlin-latest.osm.pbf`, which has no personal metadata, dated
 by its replication timestamp. It is classified like every snapshot before it and appended to the
 versions of the published build; areas, tiles and popup file are rebuilt, and the
-new build is published. The history file is not needed again.
+new build is published. The history file is not needed again. The split by place
+is made anew for all steps, since the one before the new snapshot can change.
 
 ```bash
 uv run python -m pipeline update --pbf berlin-latest.osm.pbf   # the same, by hand
