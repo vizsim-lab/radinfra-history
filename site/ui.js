@@ -118,16 +118,32 @@ export function setupPanel() {
     setPanelCollapsed(isPanelCollapsed());
 
     for (const section of panel.querySelectorAll('.legend-section')) {
-        const title = section.querySelector('.legend-section-title');
-        const arrow = title.querySelector('.section-arrow');
-        title.addEventListener('click', (event) => {
+        section.querySelector('.legend-section-title').addEventListener('click', (event) => {
             if (ownClick(event)) return;
-            const collapsed = !section.classList.contains('collapsed');
-            section.classList.toggle('collapsed', collapsed);
-            arrow.classList.toggle('open', !collapsed);
-            arrow.setAttribute('aria-expanded', String(!collapsed));
+            setSectionCollapsed(section, !section.classList.contains('collapsed'));
         });
     }
+}
+
+function setSectionCollapsed(section, collapsed) {
+    const arrow = section.querySelector('.section-arrow');
+    section.classList.toggle('collapsed', collapsed);
+    arrow.classList.toggle('open', !collapsed);
+    arrow.setAttribute('aria-expanded', String(!collapsed));
+}
+
+// Unfold a section of the panel (and the panel) and scroll it to the top, below
+// the sticky title row rather than behind it.
+export function openSection(name) {
+    const panel = document.getElementById('panel');
+    const section = panel.querySelector(`.legend-section[data-section="${name}"]`);
+    if (!section) return;
+    if (isPanelCollapsed()) setPanelCollapsed(false);
+    setSectionCollapsed(section, false);
+    const title = panel.querySelector('.legend-title');
+    const top = panel.scrollTop + section.getBoundingClientRect().top - panel.getBoundingClientRect().top
+        - (title?.offsetHeight ?? 0) - 6;
+    panel.scrollTo({ top, behavior: 'smooth' });
 }
 
 // The panel and the zoom buttons sit above the timeline on narrow screens, so

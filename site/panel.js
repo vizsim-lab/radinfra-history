@@ -1,5 +1,6 @@
 // The side panel: legend, area picker, change table, and the background switch.
 
+import { changeHints, formatDelta, partTip, retagNote, splitChanges } from './changes.js';
 import { formatDate, formatKm, formatKmNumber, formatShortDate, sparkline } from './timeline.js';
 
 // Legend swatch mirrors the mark: a short line, dashed where the style dashes it.
@@ -98,14 +99,12 @@ export function createTable(snapshots) {
     };
 }
 
-function formatDelta(value) {
-    const rounded = Math.abs(value) < 10 ? Math.round(value * 10) / 10 : Math.round(value);
-    if (rounded === 0) return '±0';
-    return `${rounded > 0 ? '+' : '−'}${formatKmNumber(Math.abs(rounded))}`;
-}
-
 // What changed in the selected area between two snapshots, per category. Rows
-// without any km at either date are left out; the sum covers all of them.
+// without any km at either date are left out; the sum covers all of them. Where the
+// build says where the km changed (changes.js), a row whose difference is mostly
+// places mapped otherwise gets a note under it, every row's tooltip splits its
+// difference, and a sentence above the table says what came at new places. Returns
+// the hints, for the notice under the legend.
 export function renderChanges(groups, scope, snapshots, fromIndex, toIndex) {
     const table = document.getElementById('change-table');
     const cell = (tag, text, cls) => {
@@ -114,6 +113,11 @@ export function renderChanges(groups, scope, snapshots, fromIndex, toIndex) {
         if (cls) node.className = cls;
         return node;
     };
+    const split = scope.changes && toIndex > fromIndex
+        ? splitChanges(scope.changes, groups, scope.kmByGroup, fromIndex, toIndex) : null;
+    const hints = split ? changeHints(split, groups, {
+        totalKm: scope.total[toIndex], fromDate: formatShortDate(snapshots[fromIndex].date),
+    }) : null;
 
     const headRow = document.createElement('tr');
     headRow.append(
@@ -143,11 +147,53 @@ export function renderChanges(groups, scope, snapshots, fromIndex, toIndex) {
         if (Math.abs(to - from) < 0.05) delta.classList.add('is-zero');
         tr.append(name, cell('td', formatKmNumber(from), 'num'), cell('td', formatKmNumber(to), 'num'), delta);
         body.appendChild(tr);
+        if (!split) continue;
+        const part = split.parts.get(group.id);
+        tr.dataset.tip = partTip(group.label, part, groups);
+        tr.tabIndex = 0;
+        if (hints.mostly.has(group.id)) {
+            tr.classList.add('is-retagged');
+            delta.classList.add('is-retagged');
+            const note = document.createElement('tr');
+            note.className = 'change-note';
+            const td = cell('td', retagNote(part, groups));
+            td.colSpan = 4;
+            note.append(td);
+            body.appendChild(note);
+        }
     }
     const total = document.createElement('tr');
     total.append(cell('td', 'Summe'), cell('td', formatKmNumber(sumFrom), 'num'),
         cell('td', formatKmNumber(sumTo), 'num'), cell('td', formatDelta(sumTo - sumFrom), 'num'));
+    if (split) {
+        total.dataset.tip = partTip('Alle zusammen', split.total, groups);
+        total.tabIndex = 0;
+    }
     table.querySelector('tfoot').replaceChildren(total);
+
+    const box = document.getElementById('change-hints');
+    box.textContent = hints?.whole ?? '';
+    box.hidden = !hints?.whole;
+    return hints;
+}
+
+// One line under the legend when much of the change is retagging, with a way to
+// the change table; hidden otherwise.
+export function renderNotice(hints, onOpen) {
+    const node = document.getElementById('legend-notice');
+    if (!hints?.notice) {
+        node.hidden = true;
+        return;
+    }
+    const text = document.createElement('span');
+    text.textContent = `${hints.notice} `;
+    const more = document.createElement('button');
+    more.type = 'button';
+    more.className = 'legend-notice__more';
+    more.textContent = 'Mehr unter „Veränderung“';
+    more.addEventListener('click', onOpen);
+    node.replaceChildren(text, more);
+    node.hidden = false;
 }
 
 // The "from" date of the change table.

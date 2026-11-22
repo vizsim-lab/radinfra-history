@@ -4,6 +4,10 @@
 // snapshot, or focus it and use the arrow keys (one step), Page Up/Down (one
 // year at quarterly steps) and Home/End. The x axis is proportional to time,
 // so an irregular last step (the history file's own end) sits where it belongs.
+//
+// Under the line, a bar for each step between two snapshots says how many km
+// changed their category at the same place then (changes.js): where the bars are
+// high, the curves of the categories show a change of mapping more than of streets.
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 // The top margin holds the names of marked periods, above the line's reach.
@@ -56,8 +60,18 @@ function niceStep(max, ticks) {
     return 10 * power;
 }
 
-export function createTimeline(container, { snapshots, values: initialValues, label, onChange, notes = [] }) {
+// The bars' scale: the highest bar of an area, but at least this share of its
+// largest total, so that a quiet area's few retagged metres stay small.
+const BAR_FLOOR_SHARE = 0.01;
+// The highest bar fills this much of the plot's height.
+const BAR_HEIGHT_SHARE = 0.4;
+
+export function createTimeline(container, {
+    snapshots, values: initialValues, label, onChange, notes: initialNotes = [], steps: initialSteps = [],
+}) {
     let values = initialValues;
+    let notes = initialNotes;
+    let steps = initialSteps;
     const times = snapshots.map((s) => parseDate(s.date).getTime());
     const t0 = times[0];
     const t1 = times[times.length - 1];
@@ -131,6 +145,27 @@ export function createTimeline(container, { snapshots, values: initialValues, la
             name.textContent = xb - xa >= note.label.length * 5.6 ? note.label : (note.short ?? note.label);
         }
 
+        // What changed category at the same place, step by step: one bar per step,
+        // from the snapshot before to this one, along the bottom of the plot.
+        const retagged = steps.map((s) => s?.retagged ?? 0);
+        const most = Math.max(...retagged, 0);
+        if (most >= 0.05) {
+            const scale = Math.max(most, BAR_FLOOR_SHARE * Math.max(...values, 0));
+            const bars = el('g', { class: 'tl-retag' }, svg);
+            for (let i = 1; i < times.length; i += 1) {
+                const h = (retagged[i] / scale) * BAR_HEIGHT_SHARE * PLOT_HEIGHT;
+                if (h < 0.5) continue;
+                const xa = x(times[i - 1]) + 1;
+                const xb = x(times[i]) - 1;
+                el('rect', { x: xa, y: MARGIN.top + PLOT_HEIGHT - h, width: Math.max(1, xb - xa), height: h }, bars);
+            }
+            const key = el('g', { class: 'tl-retag-key' }, svg);
+            const text = el('text', { x: width - MARGIN.right, y: MARGIN.top - 5, 'text-anchor': 'end' }, key);
+            text.textContent = 'umgetaggt je Quartal';
+            const w = text.getComputedTextLength?.() || 110;
+            el('rect', { x: width - MARGIN.right - w - 12, y: MARGIN.top - 13, width: 8, height: 8 }, key);
+        }
+
         // Recessive grid: hairlines at clean values, labelled in muted ink.
         const grid = el('g', { class: 'tl-grid' }, svg);
         const digits = step < 1 ? 1 : 0;
@@ -196,9 +231,23 @@ export function createTimeline(container, { snapshots, values: initialValues, la
         const when = document.createElement('span');
         when.textContent = formatDate(snapshots[index].date);
         tooltip.append(value, when);
-        const px = x(times[index]);
-        tooltip.style.left = `${Math.min(Math.max(px, 60), width - 60)}px`;
+        const step = steps[index];
+        if (step) {
+            const parts = [];
+            if (step.retagged >= 0.05) parts.push(`${formatKm(step.retagged)} umgetaggt`);
+            if (step.newPlaces >= 0.05) parts.push(`+${formatKm(step.newPlaces)} an neuen Stellen`);
+            if (step.gone >= 0.05) parts.push(`−${formatKm(step.gone)} entfallen`);
+            if (parts.length) {
+                const since = document.createElement('span');
+                since.className = 'tl-tooltip__step';
+                since.textContent = `seit ${formatShortDate(snapshots[index - 1].date)}: ${parts.join(', ')}`;
+                tooltip.append(since);
+            }
+        }
+        // Shown first, so it can be measured and kept inside the chart.
         tooltip.classList.add('is-visible');
+        const half = Math.max(60, tooltip.offsetWidth / 2 + 4);
+        tooltip.style.left = `${Math.min(Math.max(x(times[index]), half), width - half)}px`;
     }
 
     function set(index, { notify = true } = {}) {
@@ -272,9 +321,12 @@ export function createTimeline(container, { snapshots, values: initialValues, la
     return {
         set,
         get: () => current,
-        // New series for the same snapshots, e.g. when the area changes.
-        setValues(next) {
+        // New series for the same snapshots, e.g. when the area changes, with the
+        // area's steps (changes.js, stepChanges) and marked periods.
+        setValues(next, { steps: nextSteps = [], notes: nextNotes = notes } = {}) {
             values = next;
+            steps = nextSteps;
+            notes = nextNotes;
             fitScale();
             container.setAttribute('aria-valuetext',
                 `${formatDate(snapshots[current].date)}, ${formatKm(values[current])}`);

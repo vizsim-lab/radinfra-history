@@ -100,6 +100,8 @@
                         <span class="legend-columns__km" data-tip="Kilometer je Straßenseite und Weg: Ein Radweg auf beiden Straßenseiten zählt doppelt, ein Weg für beide Richtungen einfach.">km <span class="info-icon">i</span></span>
                     </div>
                     <div id="legend-items" class="legend-items"></div>
+                    <!-- When much of the change is retagging (changes.js); hidden otherwise. -->
+                    <p id="legend-notice" class="legend-notice" role="note" hidden></p>
                     <p class="legend-hint">
                         Klick auf eine Zeile blendet die Führungsform aus und ein. Ab
                         <a href="#" class="zoom-link" data-zoom="12">Zoomstufe 12</a> zeigt ein Klick
@@ -120,7 +122,9 @@
                     <p class="legend-disclaimer">
                         <strong>OSM-Stand, nicht Baustand.</strong> Gezählt wird, was in OpenStreetMap
                         eingetragen war; Kartieraktionen erscheinen als Sprünge. Ältere Tagging-Schemata
-                        landen öfter in „Führungsform unklar“.
+                        landen öfter in „Führungsform unklar“. Wächst oder schrumpft eine Führungsform
+                        vor allem, weil dieselben Stellen umgetaggt wurden, steht das unter ihrer Zeile;
+                        jede Zeile zeigt beim Zeigen oder Antippen, woher ihre Differenz kommt.
                     </p>
                     <p class="change-range">
                         <label for="change-from">von</label>
@@ -128,6 +132,7 @@
                         bis <strong id="change-to">…</strong>
                         <span class="change-range__hint">(Zeitleiste)</span>
                     </p>
+                    <p id="change-hints" class="change-hints" role="note" hidden></p>
                     <table id="change-table" class="change-table">
                         <thead></thead>
                         <tbody></tbody>
