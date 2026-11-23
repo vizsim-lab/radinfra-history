@@ -225,7 +225,7 @@ def km_of(wkt, dirs):
 
 
 def test_spans_file(history, tmp_path):
-    """The popup file holds every version's category span at offset vid * 6."""
+    """The popup file holds every version's category span at offset vid * 8."""
     out, timeline_path, spans = tmp_path / "v.parquet", tmp_path / "t.json", tmp_path / "spans.bin"
     build_versions(history, out, timeline_path)
     write_spans(out, timeline_path, spans)
@@ -238,8 +238,11 @@ def test_spans_file(history, tmp_path):
     data = spans.read_bytes()
     assert len(data) == (rows[-1][0] + 1) * SPAN_RECORD.size
     assert any(pc for *_, pc, _ in rows) and any(nc for *_, nc in rows)
+    assert timeline["span_size"] == SPAN_RECORD.size == 8
     for vid, cf, ct, pc, nc in rows:
-        i_cf, i_ct, i_pc, i_nc = SPAN_RECORD.unpack_from(data, vid * SPAN_RECORD.size)
+        i_cf, i_ct, i_pc, i_nc, i_pm, i_nm = SPAN_RECORD.unpack_from(data, vid * SPAN_RECORD.size)
+        # Without a changes file, the place before and after is not known.
+        assert (i_pm, i_nm) == (NO_CATEGORY, NO_CATEGORY)
         assert keys[i_cf] == cf
         assert (OPEN_END if i_ct == NO_SNAPSHOT else keys[i_ct]) == ct
         assert (None if i_pc == NO_CATEGORY else categories[i_pc]) == pc

@@ -610,6 +610,53 @@ select {
     color: #78350f;
 }
 
+/* Under the legend, when much of the change is retagging: the same amber. */
+.legend-notice {
+    margin: 8px 0 0;
+    padding: 6px 9px;
+    border-left: 3px solid #f59e0b;
+    border-radius: 0 8px 8px 0;
+    background: #fffbeb;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: #78350f;
+}
+
+.legend-notice[hidden] {
+    display: none;
+}
+
+.legend-notice__more {
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: inherit;
+    font-weight: 600;
+    color: inherit;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    cursor: pointer;
+}
+
+.legend-notice__more:hover {
+    color: #451a03;
+}
+
+/* Above the change table: what came at new places. */
+.change-hints {
+    margin: 0 0 10px;
+    padding: 6px 9px;
+    border-radius: 8px;
+    background: #f3f4f6;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: var(--ui-text-sub);
+}
+
+.change-hints[hidden] {
+    display: none;
+}
+
 .change-range {
     display: flex;
     flex-wrap: wrap;
@@ -672,6 +719,25 @@ select {
     border-top: 1px solid var(--ui-border);
     font-weight: 700;
     color: var(--ui-text-strong);
+}
+
+/* A row that changed mostly because the same places were mapped otherwise: its
+   difference in amber, and a note under it, in the amber of the notice. */
+.change-table td.is-retagged {
+    font-weight: 700;
+    color: #b45309;
+}
+
+.change-table tr.change-note td {
+    padding: 0 0 5px 24px;
+    border-top: 0;
+    font-size: 11px;
+    line-height: 1.4;
+    color: #92400e;
+}
+
+.change-table tr[data-tip] {
+    cursor: help;
 }
 
 /* ───── About ───── */
@@ -974,6 +1040,17 @@ select {
     fill: var(--ui-text-muted);
 }
 
+/* What changed in OSM, step by step: amber, as the notes on OSM's state. */
+.tl-activity rect {
+    fill: #f59e0b;
+    opacity: 0.32;
+}
+
+.tl-activity-key rect {
+    fill: #f59e0b;
+    opacity: 0.5;
+}
+
 .tl-line {
     fill: none;
     stroke: var(--ui-text-sub);
@@ -1036,6 +1113,15 @@ select {
 
 .tl-tooltip span {
     color: #d1d5db;
+}
+
+.tl-tooltip .tl-tooltip__step {
+    max-width: 250px;
+    margin-top: 2px;
+    font-size: 11px;
+    white-space: normal;
+    text-align: center;
+    color: #fde68a;
 }
 
 .tl-details {

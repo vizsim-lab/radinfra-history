@@ -52,14 +52,15 @@ function maskFilter(area, get) {
     return parts.length ? ['any', ...parts] : NONE;
 }
 
-// areas/index.json: rows of `fields`, the region first.
+// areas/index.json: rows of `fields`, the region first; `groups` names the legend
+// rows that the bundles' `chg` and `fl` count by index.
 export function readIndex(data) {
     const at = Object.fromEntries(data.fields.map((name, i) => [name, i]));
     const list = data.areas.map((row) => ({
         slug: row[at.slug], name: row[at.name], level: row[at.level], parent: row[at.parent],
         bundle: row[at.bundle], km2: row[at.km2], bbox: row[at.bbox],
     }));
-    return { list, aliases: data.aliases ?? {} };
+    return { list, aliases: data.aliases ?? {}, groups: data.groups ?? [] };
 }
 
 export function createAreas(map, { index, loadBundle, tilesURL, encoding, outline, beforeId = undefined,
@@ -196,7 +197,11 @@ export function createAreas(map, { index, loadBundle, tilesURL, encoding, outlin
             console.warn(`area numbers for ${area.slug} unavailable:`, error);
         }
         if (mine !== request) return;
-        area.km = bundle?.areas?.[area.slug]?.km ?? {};
+        const numbers = bundle?.areas?.[area.slug];
+        area.km = numbers?.km ?? {};
+        // Where the km change (pipeline/areas.py); builds before November 2026 have none.
+        area.chg = numbers?.chg ?? null;
+        area.fl = numbers?.fl ?? [];
         show(area, { fit });
     }
 

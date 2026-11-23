@@ -1,4 +1,5 @@
 import {
+    AREA_NOTES,
     ATTRIBUTION,
     BASEMAP_ATTRIBUTION,
     BASEMAP_STYLE,
@@ -23,7 +24,6 @@ import {
     TILE_ENCODING,
     TIME_MAX_WAIT_MS,
     TIME_SETTLE_MS,
-    TIMELINE_NOTES,
     TIMELINE_URL,
     URL_DEBOUNCE_MS,
     areaBundleURL,
@@ -40,6 +40,7 @@ import {
     tilesURL,
 } from './config.js';
 import { createAreas, readIndex } from './areas.js';
+import { changesOf, stepChanges } from './changes.js';
 import { createImagery } from './imagery.js';
 import {
     bindBasemapSwitch,
@@ -49,6 +50,7 @@ import {
     describeArea,
     fillChangeFrom,
     renderChanges,
+    renderNotice,
     swatch,
 } from './panel.js';
 import { createAreaSearch } from './search.js';
@@ -58,6 +60,7 @@ import {
     bindZoomLinks,
     foldAttributionOnPhone,
     isPanelCollapsed,
+    openSection,
     setPanelCollapsed,
     setupPanel,
     setupTooltips,
@@ -268,24 +271,36 @@ function featureBounds(geometry) {
 
 const SIDE_LABELS = { l: 'linke Straßenseite', r: 'rechte Straßenseite', s: 'eigener Weg' };
 
-// The popup file has one record of six bytes per version id (vid, the tiles'
-// feature id): cf and ct as snapshot indices (uint16, 0xFFFF: still so), pc and nc
-// as indices into the timeline's `categories` (uint8, 0xFF: none). One range
-// request per clicked line; a server that ignores ranges sends the whole file.
-const SPAN_SIZE = 6;
+// The popup file has one record per version id (vid, the tiles' feature id), of
+// the timeline's `span_size` bytes (six in builds before November 2026): cf and ct
+// as snapshot indices (uint16, 0xFFFF: still so), pc and nc as indices into the
+// timeline's `categories` (uint8, 0xFF: none), and then what was at the place
+// before the run and is after it (pipeline/versions.py, write_spans): a category
+// index, plus 0x80 if it was a side of a road; 0xFD something else beside it,
+// 0xFE nothing; 0xFF not known. One range request per clicked line; a server that
+// ignores ranges sends the whole file.
+function place(code, categories) {
+    if (code === undefined || code === 0xff) return null;
+    if (code === 0xfe) return { empty: true };
+    if (code === 0xfd) return { beside: true };
+    const category = categories[code & 0x7f];
+    return category ? { category, onRoad: Boolean(code & 0x80) } : null;
+}
+
 function createSpanReader(url, timeline) {
     const keys = timeline.snapshots.map((s) => s.key);
     const categories = timeline.categories ?? [];
+    const size = timeline.span_size ?? 6;
     const cache = new Map();
     return async (vid) => {
         if (!Number.isInteger(vid) || vid <= 0) throw new Error(`no version id: ${vid}`);
         if (cache.has(vid)) return cache.get(vid);
-        const start = vid * SPAN_SIZE;
-        const response = await fetch(url, { headers: { Range: `bytes=${start}-${start + SPAN_SIZE - 1}` } });
+        const start = vid * size;
+        const response = await fetch(url, { headers: { Range: `bytes=${start}-${start + size - 1}` } });
         if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
         let buffer = await response.arrayBuffer();
-        if (response.status === 200) buffer = buffer.slice(start, start + SPAN_SIZE);
-        if (buffer.byteLength < SPAN_SIZE) throw new Error(`${url}: no record for ${vid}`);
+        if (response.status === 200) buffer = buffer.slice(start, start + size);
+        if (buffer.byteLength < size) throw new Error(`${url}: no record for ${vid}`);
         const view = new DataView(buffer);
         const cti = view.getUint16(2, true);
         const pci = view.getUint8(4);
@@ -295,6 +310,8 @@ function createSpanReader(url, timeline) {
             ct: cti === 0xffff ? OPEN_END : keys[cti],
             pc: pci === 0xff ? null : categories[pci],
             nc: nci === 0xff ? null : categories[nci],
+            before: size >= 8 ? place(view.getUint8(6), categories) : null,
+            after: size >= 8 ? place(view.getUint8(7), categories) : null,
         };
         if (span.cf === undefined || span.ct === undefined) throw new Error(`${url}: bad record for ${vid}`);
         cache.set(vid, span);
@@ -346,6 +363,11 @@ function popupContent(props, { groupOf, snapshots, radinfraHref, span }) {
         tr.append(node('td', null, label), td);
         table.append(tr);
     };
+    // Without the same way id before or after, the popup file says what was at the
+    // place: another category (so not a new place, nor a gone one; whether it was
+    // only mapped otherwise or rebuilt, the data cannot say), something beside it,
+    // or nothing.
+    const how = (p) => (p.onRoad ? 'an dieser Stelle, als Tag an der Straße' : 'an dieser Stelle, als eigener Weg');
     if (span === undefined) {
         row('Seit', '…');
         row('Bis', '…');
@@ -358,13 +380,23 @@ function popupContent(props, { groupOf, snapshots, radinfraHref, span }) {
             row('Seit', `spätestens ${formatDate(snapshots[0].date)}`, 'schon im ersten Stand dieser Karte');
         } else {
             row('Seit', formatDate(keyToIso(span.cf)), `eingetragen ${between(from)}`);
-            row('Vorher', span.pc ? labelOf(span.pc) : 'nicht unter dieser Way-ID erfasst');
+            const before = span.before;
+            if (span.pc) row('Vorher', labelOf(span.pc));
+            else if (before?.category) row('Vorher', labelOf(before.category), `${how(before)}: keine neue Stelle`);
+            else if (before?.beside) row('Vorher', 'daneben schon Radinfrastruktur', 'die geblieben ist');
+            else if (before?.empty) row('Vorher', 'an dieser Stelle nichts', 'neu gebaut oder erstmals kartiert');
+            else row('Vorher', 'nicht unter dieser Way-ID erfasst');
         }
         if (span.ct === OPEN_END) {
             row('Bis', `heute (Stand ${formatShortDate(snapshots[snapshots.length - 1].date)})`);
         } else {
             row('Bis', formatDate(keyToIso(span.ct)), until > 0 ? `geändert ${between(until)}` : null);
-            row('Danach', span.nc ? labelOf(span.nc) : 'nicht mehr unter dieser Way-ID erfasst');
+            const after = span.after;
+            if (span.nc) row('Danach', labelOf(span.nc));
+            else if (after?.category) row('Danach', labelOf(after.category), `${how(after)}: nicht verschwunden`);
+            else if (after?.beside) row('Danach', 'daneben bleibt Radinfrastruktur');
+            else if (after?.empty) row('Danach', 'an dieser Stelle nichts mehr', 'zurückgebaut oder aus OSM entfernt');
+            else row('Danach', 'nicht mehr unter dieser Way-ID erfasst');
         }
     }
     card.append(table);
@@ -419,11 +451,21 @@ function extractScope(timeline) {
     };
 }
 
-function areaScope(area, groups, snapshots) {
+function areaScope(area, groups, snapshots, groupIds) {
     const zeros = snapshots.map(() => 0);
     const kmByGroup = new Map(groups.map((g) => [g.id, area.km[g.id] ?? zeros]));
     const total = snapshots.map((_, i) => groups.reduce((sum, g) => sum + (area.km[g.id]?.[i] ?? 0), 0));
-    return { name: area.slug === 'berlin' ? 'Berlin' : area.name, area, kmByGroup, total };
+    return {
+        name: area.slug === 'berlin' ? 'Berlin' : area.name, area, kmByGroup, total,
+        changes: changesOf(area, groupIds),
+    };
+}
+
+// The periods checked by hand (AREA_NOTES) of an area and the areas it lies in.
+function notesFor(area, areas) {
+    const notes = [];
+    for (let a = area; a; a = a.parent ? areas?.get(a.parent) : null) notes.push(...(AREA_NOTES[a.slug] ?? []));
+    return notes;
 }
 
 async function main() {
@@ -561,7 +603,8 @@ async function main() {
 
         const updateChanges = () => {
             changeTo.textContent = formatShortDate(snapshots[index].date);
-            renderChanges(groups, scope, snapshots, changeFrom(), index);
+            const hints = renderChanges(groups, scope, snapshots, changeFrom(), index);
+            renderNotice(hints, () => openSection('changes'));
         };
 
         // Readout, legend, chart and table follow at once; the map gets the date
@@ -586,13 +629,15 @@ async function main() {
             values: scope.total,
             label: 'Datenstand wählen',
             onChange: show,
-            notes: TIMELINE_NOTES,
         });
 
         const setScope = (next) => {
             scope = next;
             legend.setData(scope.kmByGroup);
-            control.setValues(scope.total);
+            control.setValues(scope.total, {
+                steps: stepChanges(scope.changes, snapshots.length),
+                notes: scope.area ? notesFor(scope.area, areas) : (AREA_NOTES[timeline.region?.toLowerCase()] ?? []),
+            });
             table.setValues(scope.total);
             readoutScope.textContent = `${scope.name} `;
             readoutTotal.textContent = formatKm(scope.total[index]);
@@ -614,7 +659,7 @@ async function main() {
             onSelect: (area) => {
                 setSearchValue(area);
                 describeArea(area, areas);
-                setScope(areaScope(area, groups, snapshots));
+                setScope(areaScope(area, groups, snapshots, areaIndex.groups));
             },
             onPicking: (on) => {
                 document.body.classList.toggle('is-picking', on);
@@ -697,7 +742,10 @@ async function main() {
         // Hover and click query the drawn history layers, so a hidden category or
         // a version not valid at the selected date can never be hit. While an
         // area is being picked on the map, lines are left alone.
-        const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '320px' });
+        // Closed by the click handler below, not by MapLibre: with closeOnClick, a
+        // click on a second line while one popup is open opened it and closed it again
+        // (MapLibre still calls the listener it had registered before).
+        const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '320px' });
         const query = (point) => {
             const layers = historyIds.filter((id) => map.getLayer(id));
             return layers.length ? map.queryRenderedFeatures(hitBox(point), { layers }) : [];

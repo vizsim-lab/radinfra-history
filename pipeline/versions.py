@@ -367,33 +367,71 @@ def append_snapshot(versions_parquet, timeline_json, classified, snapshot_date):
 
 
 # The popup's dates, kept out of the tiles: one record per version id, so the page
-# reads the six bytes of a clicked line with one range request.
+# reads the eight bytes of a clicked line with one range request.
 #   cf, ct  snapshot indices (uint16; ct 0xFFFF while the run is open)
 #   pc, nc  indices into the timeline's `categories` (uint8; 0xFF for none)
-SPAN_RECORD = struct.Struct("<HHBB")
+#   pm, nm  what was at the place before the run and is after it, by
+#           pipeline/changes.py: the index of the category it replaced or that
+#           replaced it, plus ON_ROAD where that was a side of a road; PLACE_BESIDE
+#           where something else was or stays there, PLACE_EMPTY where nothing;
+#           0xFF where not known (first snapshot, run still open, no changes file)
+SPAN_RECORD = struct.Struct("<HHBBBB")
 NO_SNAPSHOT = 0xFFFF
 NO_CATEGORY = 0xFF
+ON_ROAD = 0x80
+PLACE_BESIDE = 0xFD
+PLACE_EMPTY = 0xFE
 
 
 # The same record as a numpy type, to write millions of them at once.
-SPAN_DTYPE = np.dtype([("cf", "<u2"), ("ct", "<u2"), ("pc", "u1"), ("nc", "u1")])
+SPAN_DTYPE = np.dtype([("cf", "<u2"), ("ct", "<u2"), ("pc", "u1"), ("nc", "u1"), ("pm", "u1"), ("nm", "u1")])
 assert SPAN_DTYPE.itemsize == SPAN_RECORD.size
 
 
-def write_spans(versions_parquet, timeline_json, out_path):
+def _place_code(rep, other, empty, category, on_road):
+    """SQL for pm or nm: the largest of the three shares decides."""
+    return f"""CASE WHEN {rep} IS NULL THEN {NO_CATEGORY}
+                    WHEN {rep} >= {other} AND {rep} >= {empty} AND {category} IS NOT NULL
+                         THEN {category} + CASE WHEN {on_road} THEN {ON_ROAD} ELSE 0 END
+                    WHEN {other} >= {empty} THEN {PLACE_BESIDE}
+                    ELSE {PLACE_EMPTY} END"""
+
+
+def write_spans(versions_parquet, timeline_json, out_path, changes_parquet=None):
+    """The popup file. `changes_parquet` (pipeline/changes.py) gives pm and nm."""
     timeline = json.loads(Path(timeline_json).read_text(encoding="utf-8"))
     keys = [s["key"] for s in timeline["snapshots"]]
     categories = timeline["categories"]
-    if len(keys) >= NO_SNAPSHOT or len(categories) >= NO_CATEGORY:
+    if len(keys) >= NO_SNAPSHOT or len(categories) >= ON_ROAD:
         raise SystemExit("too many snapshots or categories for the popup file's records")
     con = duckdb.connect()
     con.execute("CREATE TEMP TABLE snap_index AS SELECT unnest(?) AS key, generate_subscripts(?, 1) - 1 AS i",
                 [keys, keys])
     con.execute("CREATE TEMP TABLE codes AS SELECT unnest(?) AS category, generate_subscripts(?, 1) - 1 AS i",
                 [categories, categories])
-    vid, cf, ct, pc, nc, unknown = con.execute(f"""
+    # A run's place before is that of its first version, its place after that of its last.
+    if changes_parquet and Path(changes_parquet).is_file():
+        con.execute(f"""
+            CREATE TEMP TABLE places AS
+            WITH v AS (SELECT vid, id, f, t, cf, ct FROM read_parquet('{versions_parquet}')),
+                 c AS (SELECT * FROM read_parquet('{changes_parquet}')),
+                 first AS (SELECT v.id, v.cf, c.* FROM v JOIN c USING (vid) WHERE v.f = v.cf),
+                 last AS (SELECT v.id, v.ct, c.* FROM v JOIN c USING (vid) WHERE v.t = v.ct AND v.t <> {OPEN_END})
+            SELECT v.vid,
+                   {_place_code("a.s_rep", "a.s_add", "a.s_new", "pa.i", "a.s_road")} AS pm,
+                   {_place_code("b.e_rep", "b.e_red", "b.e_gone", "pb.i", "b.e_road")} AS nm
+            FROM v
+            LEFT JOIN first a ON a.id = v.id AND a.cf = v.cf
+            LEFT JOIN last b ON b.id = v.id AND b.ct = v.ct
+            LEFT JOIN codes pa ON pa.category = a.s_from
+            LEFT JOIN codes pb ON pb.category = b.e_to
+        """)
+    else:
+        con.execute(f"""CREATE TEMP TABLE places AS SELECT vid, {NO_CATEGORY} AS pm, {NO_CATEGORY} AS nm
+                        FROM read_parquet('{versions_parquet}')""")
+    vid, cf, ct, pc, nc, pm, nm, unknown = con.execute(f"""
         SELECT v.vid, sf.i, coalesce(st.i, {NO_SNAPSHOT}), coalesce(cp.i, {NO_CATEGORY}),
-               coalesce(cn.i, {NO_CATEGORY}),
+               coalesce(cn.i, {NO_CATEGORY}), coalesce(p.pm, {NO_CATEGORY}), coalesce(p.nm, {NO_CATEGORY}),
                (sf.i IS NULL OR (st.i IS NULL AND v.ct <> {OPEN_END})
                 OR (cp.i IS NULL AND v.pc IS NOT NULL) OR (cn.i IS NULL AND v.nc IS NOT NULL))
         FROM read_parquet('{versions_parquet}') v
@@ -401,12 +439,13 @@ def write_spans(versions_parquet, timeline_json, out_path):
         LEFT JOIN snap_index st ON st.key = v.ct
         LEFT JOIN codes cp ON cp.category = v.pc
         LEFT JOIN codes cn ON cn.category = v.nc
+        LEFT JOIN places p ON p.vid = v.vid
         ORDER BY v.vid
     """).fetchnumpy().values()
     if len(vid) and np.asarray(unknown).any():
         raise SystemExit(f"{versions_parquet}: spans with a snapshot or category the timeline does not have")
     records = np.zeros(int(vid[-1]) + 1 if len(vid) else 0, dtype=SPAN_DTYPE)
-    for name, values in (("cf", cf), ("ct", ct), ("pc", pc), ("nc", nc)):
+    for name, values in (("cf", cf), ("ct", ct), ("pc", pc), ("nc", nc), ("pm", pm), ("nm", nm)):
         records[name][vid] = values
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -440,6 +479,7 @@ def _timeline(dates, keys, category, k0, k1, length, region, coverage=None):
     np.add.at(diff, (gi, k0), length)
     np.add.at(diff, (gi, k1 + 1), -length)
     km = np.cumsum(diff, axis=1)[:, :n] / 1000.0
+    # + 0.0 below: a category that empties sums to -0.0, which the page would print.
 
     # Objects per snapshot: every object has exactly one version alive there.
     alive = np.zeros(n + 1)
@@ -453,13 +493,15 @@ def _timeline(dates, keys, category, k0, k1, length, region, coverage=None):
         **extra,
         "built": date.today().isoformat(),
         "unit": "km je Fahrtrichtung" if COUNT_DIRECTIONS else "km je Straßenseite und Weg",
-        # Category codes of the popup file (write_spans), in this order.
+        # Category codes of the popup file (write_spans), in this order, and the size
+        # of its records (six bytes in builds before November 2026).
         "categories": sorted(drawn_categories()),
+        "span_size": SPAN_RECORD.size,
         "snapshots": [{"date": d.isoformat(), "key": k} for d, k in zip(dates, keys)],
         "objects": [int(v) for v in objects],
         "groups": [
-            {"id": g["id"], "km": [round(float(v), 1) for v in km[i]]}
+            {"id": g["id"], "km": [round(float(v), 1) + 0.0 for v in km[i]]}
             for i, g in enumerate(groups)
         ],
-        "total_km": [round(float(v), 1) for v in km.sum(axis=0)],
+        "total_km": [round(float(v), 1) + 0.0 for v in km.sum(axis=0)],
     }

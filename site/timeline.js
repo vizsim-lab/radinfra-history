@@ -4,6 +4,12 @@
 // snapshot, or focus it and use the arrow keys (one step), Page Up/Down (one
 // year at quarterly steps) and Home/End. The x axis is proportional to time,
 // so an irregular last step (the history file's own end) sits where it belongs.
+//
+// Under the line, a bar for each step between two snapshots says how many km
+// changed in OSM then (changes.js, stepChanges): came, went, or took another
+// category. Whether built or only mapped, the data cannot say, so the bars do not
+// either; where they are high and the line hardly moves, the same km were
+// rearranged.
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 // The top margin holds the names of marked periods, above the line's reach.
@@ -56,8 +62,18 @@ function niceStep(max, ticks) {
     return 10 * power;
 }
 
-export function createTimeline(container, { snapshots, values: initialValues, label, onChange, notes = [] }) {
+// The bars' scale: the highest bar of an area, but at least this share of its
+// largest total, so that a quiet area's few changed metres stay small.
+const BAR_FLOOR_SHARE = 0.01;
+// The highest bar fills this much of the plot's height.
+const BAR_HEIGHT_SHARE = 0.4;
+
+export function createTimeline(container, {
+    snapshots, values: initialValues, label, onChange, notes: initialNotes = [], steps: initialSteps = [],
+}) {
     let values = initialValues;
+    let notes = initialNotes;
+    let steps = initialSteps;
     const times = snapshots.map((s) => parseDate(s.date).getTime());
     const t0 = times[0];
     const t1 = times[times.length - 1];
@@ -117,9 +133,32 @@ export function createTimeline(container, { snapshots, values: initialValues, la
         svg.setAttribute('height', height);
         svg.replaceChildren();
 
+        // What changed in OSM, step by step: one bar per step, from the snapshot
+        // before to this one, along the bottom of the plot; its key in the margin
+        // above, at the right, shorter on a narrow chart.
+        const changed = steps.map((s) => s?.changed ?? 0);
+        const most = Math.max(...changed, 0);
+        let keyLeft = width;
+        if (most >= 0.05) {
+            const scale = Math.max(most, BAR_FLOOR_SHARE * Math.max(...values, 0));
+            const bars = el('g', { class: 'tl-activity' }, svg);
+            for (let i = 1; i < times.length; i += 1) {
+                const h = (changed[i] / scale) * BAR_HEIGHT_SHARE * PLOT_HEIGHT;
+                if (h < 0.5) continue;
+                const xa = x(times[i - 1]) + 1;
+                const xb = x(times[i]) - 1;
+                el('rect', { x: xa, y: MARGIN.top + PLOT_HEIGHT - h, width: Math.max(1, xb - xa), height: h }, bars);
+            }
+            const key = el('g', { class: 'tl-activity-key' }, svg);
+            const text = el('text', { x: width - MARGIN.right, y: MARGIN.top - 5, 'text-anchor': 'end' }, key);
+            text.textContent = width >= 520 ? 'Änderungen in OSM je Quartal' : 'OSM-Änderungen';
+            keyLeft = width - MARGIN.right - (text.getComputedTextLength?.() || 150) - 12;
+            el('rect', { x: keyLeft, y: MARGIN.top - 13, width: 8, height: 8 }, key);
+        }
+
         // Periods in which the curve shows a change of mapping rather than of the
         // streets: a faint band, named in the margin above, where it never meets the
-        // line. A short name where the long one would overrun the band.
+        // line. A short name where the long one would overrun the band or the key.
         for (const note of notes) {
             const a = Math.max(t0, parseDate(note.from).getTime());
             const b = Math.min(t1, parseDate(note.to).getTime());
@@ -127,8 +166,10 @@ export function createTimeline(container, { snapshots, values: initialValues, la
             const xa = x(a);
             const xb = x(b);
             el('rect', { class: 'tl-note', x: xa, y: MARGIN.top, width: xb - xa, height: PLOT_HEIGHT }, svg);
+            const room = Math.min(xb - xa, keyLeft - 8 - xa);
             const name = el('text', { class: 'tl-note-label', x: xa + 2, y: MARGIN.top - 5 }, svg);
-            name.textContent = xb - xa >= note.label.length * 5.6 ? note.label : (note.short ?? note.label);
+            name.textContent = room >= note.label.length * 5.6 ? note.label : (note.short ?? note.label);
+            if (room < name.textContent.length * 5.6) name.remove();
         }
 
         // Recessive grid: hairlines at clean values, labelled in muted ink.
@@ -196,9 +237,21 @@ export function createTimeline(container, { snapshots, values: initialValues, la
         const when = document.createElement('span');
         when.textContent = formatDate(snapshots[index].date);
         tooltip.append(value, when);
-        const px = x(times[index]);
-        tooltip.style.left = `${Math.min(Math.max(px, 60), width - 60)}px`;
+        // What changed in OSM since the snapshot before, next to what that did to
+        // the sum: much changed and the sum hardly moved means rearranged.
+        const step = steps[index];
+        if (step && step.changed >= 0.05) {
+            const net = values[index] - values[index - 1];
+            const since = document.createElement('span');
+            since.className = 'tl-tooltip__step';
+            since.textContent = `seit ${formatShortDate(snapshots[index - 1].date)}: ${formatKm(step.changed)} `
+                + `in OSM geändert, Summe ${net >= 0.05 ? '+' : net <= -0.05 ? '−' : '±'}${formatKm(Math.abs(net))}`;
+            tooltip.append(since);
+        }
+        // Shown first, so it can be measured and kept inside the chart.
         tooltip.classList.add('is-visible');
+        const half = Math.max(60, tooltip.offsetWidth / 2 + 4);
+        tooltip.style.left = `${Math.min(Math.max(x(times[index]), half), width - half)}px`;
     }
 
     function set(index, { notify = true } = {}) {
@@ -272,9 +325,12 @@ export function createTimeline(container, { snapshots, values: initialValues, la
     return {
         set,
         get: () => current,
-        // New series for the same snapshots, e.g. when the area changes.
-        setValues(next) {
+        // New series for the same snapshots, e.g. when the area changes, with the
+        // area's steps (changes.js, stepChanges) and marked periods.
+        setValues(next, { steps: nextSteps = [], notes: nextNotes = notes } = {}) {
             values = next;
+            steps = nextSteps;
+            notes = nextNotes;
             fitScale();
             container.setAttribute('aria-valuetext',
                 `${formatDate(snapshots[current].date)}, ${formatKm(values[current])}`);
