@@ -11,10 +11,26 @@ counts with its full length; one that crosses the boundary counts with the part
 inside, as radinfra.de's Statistik does. Lengths count as everywhere else
 (versions.counted_m): per side of the road and per way.
 
+With the km goes what changed in OSM at each step, by object, as the versions'
+category runs say (pipeline/versions.py: cf, ct, pc, nc). A run that starts with
+another legend row before it on the same object is a change of category; one with
+nothing drawn before it on that object came; one with nothing drawn after it
+went. Every place counts once per step: a change of category at its new run only.
+Changes within a legend row, edits (a moved node, a new name) and a longer or
+shorter line are not counted. Nothing here says where an object lay before: a way
+redrawn under a new id, or a cycleway moved from its road's tags to a way of its
+own, comes under its new id and goes under its old one; a way split in two keeps
+its id on one part, which gets shorter, and the other part comes. So an area's sum
+moves by what came, less what went, plus what the objects that go on got longer
+or shorter, which the page takes as the rest.
+
 Writes, into the build:
 
     areas/index.json      every area: name, level, parent, bundle, km², bbox
-    areas/<bundle>.json   km per legend row and snapshot, for the areas of a Kreis
+    areas/<bundle>.json   for the areas of a Kreis:
+                          km   km per legend row and snapshot
+                          act  [step, changed, came, went]: km of the step from
+                               snapshot step-1 to step, for the steps with any
     areas.pmtiles         the boundaries as tiles (outline, dimming, picking)
     outline.geojson       the region's own outline, simplified
 """
@@ -33,7 +49,7 @@ import shapely
 from . import tools
 from .style import legend_groups
 from .tiles import run_manby
-from .versions import counted_m, geometry_lengths_m
+from .versions import OPEN_END, counted_m, geometry_lengths_m
 
 # OSM's admin levels in Germany, as the page names them.
 LEVELS = {"2": "Staat", "4": "Land", "6": "Kreis", "8": "Gemeinde", "9": "Bezirk", "10": "Ortsteil"}
@@ -51,6 +67,8 @@ AREAS_LAYER = "areas"
 AREAS_MINZOOM, AREAS_MAXZOOM = 4, 12
 # ~100 m: the region's outline in the link preview.
 OUTLINE_DEG = 0.001
+# What changed in OSM at a step, in the order of the bundles' `act` (module docstring).
+ACTIVITY = ("changed", "came", "went")
 
 
 def slugify(name):
@@ -211,18 +229,29 @@ def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_dir, region, 
     con = duckdb.connect()
     last_vid = con.execute(f"SELECT coalesce(max(vid), 0) FROM read_parquet('{versions_parquet}')").fetchone()[0]
     diff = np.zeros((len(areas), len(groups), n + 1))
+    # km per area and step that changed category, came and went (module docstring).
+    activity = np.zeros((len(ACTIVITY), len(areas), n + 1))
     # What the newest snapshot changed, and how much of it in the region: a new
     # kind of extract would show up as changes outside, at its edge.
     changes = np.zeros(4, dtype=np.int64)  # start, end, start inside, end inside
     for first in range(1, last_vid + 1, LINE_CHUNK):
         cols = con.execute(
-            f"SELECT category, k0, k1, dirs, length_m, geometry::BLOB AS wkb FROM read_parquet('{versions_parquet}') "
-            "WHERE vid >= ? AND vid < ?", [first, first + LINE_CHUNK]
+            "SELECT category, k0, k1, dirs, length_m, geometry::BLOB AS wkb, "
+            "f = cf AND k0 >= 1 AS run_starts, coalesce(pc, '') AS pc, "
+            "t = ct AND t <> ? AND nc IS NULL AS went "
+            f"FROM read_parquet('{versions_parquet}') WHERE vid >= ? AND vid < ?",
+            [OPEN_END, first, first + LINE_CHUNK]
         ).fetchnumpy()
         lines = shapely.from_wkb(np.asarray([bytes(b) for b in cols["wkb"]], dtype=object))
         gi = np.array([group_of[c] for c in cols["category"]], dtype=np.int64)
         k0 = cols["k0"].astype(np.int64)
         k1 = cols["k1"].astype(np.int64)
+        # Which versions start a run that changed category or came, at step k0, and
+        # end one that went, at step k1 + 1; the legend row before, -1 for none.
+        before = np.array([group_of.get(c, -1) for c in cols["pc"]], dtype=np.int64)
+        run_starts = np.asarray(cols["run_starts"], dtype=bool)
+        kinds = (run_starts & (before >= 0) & (before != gi), run_starts & (cols["pc"] == ""),
+                 np.asarray(cols["went"], dtype=bool))
 
         # Every (line, area) pair that touches; a line inside counts whole, one that
         # crosses the boundary only with its part inside. The tree only finds the
@@ -241,6 +270,9 @@ def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_dir, region, 
 
         np.add.at(diff, (area_i, gi[line_i], k0[line_i]), length)
         np.add.at(diff, (area_i, gi[line_i], k1[line_i] + 1), -length)
+        for j, (kind, step) in enumerate(zip(kinds, (k0, k0, k1 + 1))):
+            take = kind[line_i]
+            np.add.at(activity[j], (area_i[take], step[line_i][take]), length[take])
 
         in_region = np.zeros(len(lines), dtype=bool)
         in_region[line_i[area_i == 0]] = True
@@ -248,23 +280,27 @@ def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_dir, region, 
         changes += [starts.sum(), ends.sum(), (starts & in_region).sum(), (ends & in_region).sum()]
     km = np.cumsum(diff, axis=2)[:, :, :n] / 1000.0
 
+    activity = np.round(activity / 1000.0, 2) + 0.0
     numbers = []
     for a in range(len(areas)):
         series = {}
         for g, group in enumerate(groups):
-            values = np.round(km[a, g], 2)
+            values = np.round(km[a, g], 2) + 0.0  # no -0.0 where a category empties
             if values.any():
                 series[group["id"]] = [float(v) for v in values]
-        numbers.append(series)
+        steps = np.flatnonzero(activity[:, a].any(axis=0))
+        numbers.append({"km": series, "act": [[int(k), *(float(v) for v in activity[:, a, k])] for k in steps]})
     index = _write(Path(out_dir), areas, aliases, numbers, timeline, groups)
 
     top = areas[0]
-    top_now = sum(v[-1] for v in numbers[0].values())
+    top_now = sum(v[-1] for v in numbers[0]["km"].values())
     per_level = defaultdict(int)
     for area in areas[1:]:
         per_level[area["level"]] += 1
     print(f"  {len(areas)} areas ({', '.join(f'{c} {PLURAL[lv]}' for lv, c in per_level.items())}); "
           f"{top['name']} now {top_now:,.0f} km of {timeline['total_km'][-1]:,.0f} km in the extract", flush=True)
+    print(f"  changed in OSM in {top['name']}, all steps: "
+          + ", ".join(f"{activity[j, 0].sum():,.0f} km {name}" for j, name in enumerate(ACTIVITY)), flush=True)
     print(f"  newest snapshot: {changes[0]:,} versions start, {changes[1]:,} end; "
           f"in {top['name']} {changes[2]:,} and {changes[3]:,}", flush=True)
     return index
@@ -302,8 +338,8 @@ def _write(out_dir, areas, aliases, numbers, timeline, groups):
     }
     _write_json(folder / "index.json", index)
     contents = defaultdict(dict)
-    for area, bundle, series in zip(areas, bundles, numbers):
-        contents[bundle][area["slug"]] = {"km": series}
+    for area, bundle, entry in zip(areas, bundles, numbers):
+        contents[bundle][area["slug"]] = entry
     for bundle, entries in contents.items():
         _write_json(folder / f"{bundle}.json", {"areas": entries})
 

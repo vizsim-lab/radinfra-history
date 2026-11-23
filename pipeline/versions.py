@@ -457,9 +457,10 @@ def _timeline(dates, keys, category, k0, k1, length, region, coverage=None):
         "categories": sorted(drawn_categories()),
         "snapshots": [{"date": d.isoformat(), "key": k} for d, k in zip(dates, keys)],
         "objects": [int(v) for v in objects],
+        # + 0.0: a category that empties sums to -0.0, which the page would print.
         "groups": [
-            {"id": g["id"], "km": [round(float(v), 1) for v in km[i]]}
+            {"id": g["id"], "km": [round(float(v), 1) + 0.0 for v in km[i]]}
             for i, g in enumerate(groups)
         ],
-        "total_km": [round(float(v), 1) for v in km.sum(axis=0)],
+        "total_km": [round(float(v), 1) + 0.0 for v in km.sum(axis=0)],
     }

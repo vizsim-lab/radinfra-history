@@ -38,7 +38,8 @@ versions.parquet                        every distinct version once, with a life
 areas/index.json                        tiles_far.pmtiles, tiles_lo.pmtiles, tiles.pmtiles
   every area: name, level, parent, box    z5–8, z9–11 and z12–14, for all dates
 areas/<Kreis>.json                      spans.bin
-  km per category, snapshot and area      the popup's dates, 6 bytes per version
+  km per category, snapshot and area,     the popup's dates, 6 bytes per version
+  and what changed in OSM per step
 areas.pmtiles, outline.geojson          timeline.json
   the boundaries                          km per category and snapshot (whole extract)
 ```
@@ -178,6 +179,25 @@ loads an index of all areas (0.4 MB compressed), an area's numbers with the file
 its Kreis when it is picked, and the boundaries as tiles. The change table compares
 any snapshot with the one selected on the timeline.
 
+**Changes in OSM.** The sum of a category can stay put while much changes
+underneath, so the timeline has a bar per step for the km that changed in OSM since
+the snapshot before, and its tooltip sets them against what that did to the sum.
+They are counted by object, from the versions' category runs (`cf`, `ct`, `pc`,
+`nc`): a way or road side whose legend row changed, one that got a category with
+nothing drawn before it on that object (came), and one that lost it (went). Each
+counts once per step; a change of category within a legend row, a moved node, a new
+name or a longer line does not. The bars say nothing about the street, and nothing
+about where an object lay before: a way redrawn under a new id, or a cycleway moved
+from its road's tags to a way of its own, comes under the new id and goes under
+the old one; a way split in two keeps its id on one part, which gets shorter, and
+the other part comes. So the sum moves by what came, less what went, plus what the
+objects that go on got longer or shorter, and the tooltip names that rest too. For
+Berlin's extract since 2020: 2,993 km came, 2,172 km went, the objects that went on
+got 988 km shorter, and the sum fell by 167 km; 1,582 km changed legend row. The
+areas get them with their km (`act` in the bundles, see
+[pipeline/areas.py](pipeline/areas.py)); builds from before November 2026 have none,
+and the page then draws no bars.
+
 ## What the map shows and what it does not
 
 - **What OSM knew, not what was built.** Mapping campaigns show up as jumps.
@@ -189,7 +209,8 @@ any snapshot with the one selected on the timeline.
 - Snapshot granularity: a change is dated to the snapshot it first appears in; the
   popup says between which two snapshots it happened.
 - Such changes of mapping are regional. In Berlin, the dip from 2021 to 2024 (about
-  −400 km for Berlin's extract, marked on Berlin's timeline) is mostly one, not a
+  −400 km for Berlin's extract, marked on the timeline while Berlin or a part of it
+  is picked: `AREA_NOTES` in [site/config.js](site/config.js)) is mostly one, not a
   change of the streets. Checked by object
   and in a sample of the ways' tags: on 533 km of road sides the track tag went,
   mostly `cycleway:*=track` → `separate`, and the new ways of their own cover

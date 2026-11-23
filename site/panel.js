@@ -79,11 +79,21 @@ export function buildLegend(groups, snapshots, onToggle) {
     return legend;
 }
 
-// The timeline's table view: total km per snapshot.
+// The timeline's table view: total km per snapshot, and the km changed in OSM
+// since the one before where the build has them (areas.js, activityOf).
 export function createTable(snapshots) {
-    const tbody = document.querySelector('#tl-table tbody');
+    const table = document.getElementById('tl-table');
+    const tbody = table.querySelector('tbody');
+    const head = table.querySelector('thead tr');
+    const th = (text) => {
+        const node = document.createElement('th');
+        node.textContent = text;
+        return node;
+    };
     return {
-        setValues(totals) {
+        setValues(totals, steps = []) {
+            const withSteps = steps.some(Boolean);
+            head.replaceChildren(th('Stand'), th('gesamt'), ...(withSteps ? [th('in OSM geändert')] : []));
             tbody.replaceChildren();
             snapshots.forEach((snapshot, i) => {
                 const tr = document.createElement('tr');
@@ -92,6 +102,20 @@ export function createTable(snapshots) {
                 const km = document.createElement('td');
                 km.textContent = formatKm(totals[i]);
                 tr.append(date, km);
+                if (withSteps) {
+                    const step = steps[i];
+                    const changed = document.createElement('td');
+                    changed.textContent = step ? formatKm(step.changed + step.came + step.went) : '–';
+                    if (step) {
+                        // As the timeline's tooltip: the rest of the sum's change is what
+                        // the objects that go on got longer or shorter.
+                        const resized = totals[i] - totals[i - 1] - (step.came - step.went);
+                        changed.title = `${formatKm(step.came)} eingetragen, ${formatKm(step.went)} ausgetragen, `
+                            + `${formatKm(step.changed)} Führungsform gewechselt, bestehende Linien `
+                            + `${resized < 0 ? '−' : '+'}${formatKm(Math.abs(resized))}`;
+                    }
+                    tr.append(changed);
+                }
                 tbody.appendChild(tr);
             });
         },

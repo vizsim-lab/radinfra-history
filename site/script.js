@@ -1,4 +1,5 @@
 import {
+    AREA_NOTES,
     ATTRIBUTION,
     BASEMAP_ATTRIBUTION,
     BASEMAP_STYLE,
@@ -23,7 +24,6 @@ import {
     TILE_ENCODING,
     TIME_MAX_WAIT_MS,
     TIME_SETTLE_MS,
-    TIMELINE_NOTES,
     TIMELINE_URL,
     URL_DEBOUNCE_MS,
     areaBundleURL,
@@ -39,7 +39,7 @@ import {
     spansURL,
     tilesURL,
 } from './config.js';
-import { createAreas, readIndex } from './areas.js';
+import { activityOf, createAreas, readIndex } from './areas.js';
 import { createImagery } from './imagery.js';
 import {
     bindBasemapSwitch,
@@ -416,14 +416,27 @@ function extractScope(timeline) {
         area: null,
         kmByGroup: new Map(timeline.groups.map((g) => [g.id, g.km])),
         total: timeline.total_km,
+        steps: activityOf(null, timeline.snapshots.length),
+        notes: AREA_NOTES[timeline.region?.toLowerCase()] ?? [],
     };
 }
 
-function areaScope(area, groups, snapshots) {
+// The periods checked by hand (AREA_NOTES) of an area and the areas it lies in.
+function notesFor(area, areas) {
+    const notes = [];
+    for (let a = area; a; a = a.parent ? areas?.get(a.parent) : null) notes.push(...(AREA_NOTES[a.slug] ?? []));
+    return notes;
+}
+
+function areaScope(area, groups, snapshots, areas) {
     const zeros = snapshots.map(() => 0);
     const kmByGroup = new Map(groups.map((g) => [g.id, area.km[g.id] ?? zeros]));
     const total = snapshots.map((_, i) => groups.reduce((sum, g) => sum + (area.km[g.id]?.[i] ?? 0), 0));
-    return { name: area.slug === 'berlin' ? 'Berlin' : area.name, area, kmByGroup, total };
+    return {
+        name: area.slug === 'berlin' ? 'Berlin' : area.name, area, kmByGroup, total,
+        steps: activityOf(area, snapshots.length),
+        notes: notesFor(area, areas),
+    };
 }
 
 async function main() {
@@ -586,14 +599,14 @@ async function main() {
             values: scope.total,
             label: 'Datenstand wählen',
             onChange: show,
-            notes: TIMELINE_NOTES,
+            notes: scope.notes,
         });
 
         const setScope = (next) => {
             scope = next;
             legend.setData(scope.kmByGroup);
-            control.setValues(scope.total);
-            table.setValues(scope.total);
+            control.setValues(scope.total, { steps: scope.steps, notes: scope.notes });
+            table.setValues(scope.total, scope.steps);
             readoutScope.textContent = `${scope.name} `;
             readoutTotal.textContent = formatKm(scope.total[index]);
             updateChanges();
@@ -614,7 +627,7 @@ async function main() {
             onSelect: (area) => {
                 setSearchValue(area);
                 describeArea(area, areas);
-                setScope(areaScope(area, groups, snapshots));
+                setScope(areaScope(area, groups, snapshots, areas));
             },
             onPicking: (on) => {
                 document.body.classList.toggle('is-picking', on);
@@ -697,7 +710,10 @@ async function main() {
         // Hover and click query the drawn history layers, so a hidden category or
         // a version not valid at the selected date can never be hit. While an
         // area is being picked on the map, lines are left alone.
-        const popup = new maplibregl.Popup({ closeButton: true, maxWidth: '320px' });
+        // Closed by the click handler below, not by MapLibre: with closeOnClick, a
+        // click on a second line while one popup is open opened it and closed it again
+        // (MapLibre still calls the listener it had registered before).
+        const popup = new maplibregl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '320px' });
         const query = (point) => {
             const layers = historyIds.filter((id) => map.getLayer(id));
             return layers.length ? map.queryRenderedFeatures(hitBox(point), { layers }) : [];

@@ -62,6 +62,20 @@ export function readIndex(data) {
     return { list, aliases: data.aliases ?? {} };
 }
 
+// What changed in OSM at each snapshot since the one before, from an area's `act`
+// rows [step, changed, came, went] (pipeline/areas.py): km whose legend row changed
+// on the same object, that came under an id with nothing before, and that went
+// from one. null for the first snapshot, and for all while a build has no `act`
+// (before November 2026).
+export function activityOf(area, count) {
+    if (!area?.act) return Array(count).fill(null);
+    const steps = Array.from({ length: count }, (_, i) => (i ? { changed: 0, came: 0, went: 0 } : null));
+    for (const [step, changed, came, went] of area.act) {
+        if (steps[step]) Object.assign(steps[step], { changed, came, went });
+    }
+    return steps;
+}
+
 export function createAreas(map, { index, loadBundle, tilesURL, encoding, outline, beforeId = undefined,
     onSelect, onPicking = () => {} }) {
     const { list, aliases } = index;
@@ -196,7 +210,9 @@ export function createAreas(map, { index, loadBundle, tilesURL, encoding, outlin
             console.warn(`area numbers for ${area.slug} unavailable:`, error);
         }
         if (mine !== request) return;
-        area.km = bundle?.areas?.[area.slug]?.km ?? {};
+        const numbers = bundle?.areas?.[area.slug];
+        area.km = numbers?.km ?? {};
+        area.act = numbers?.act ?? null;
         show(area, { fit });
     }
 
