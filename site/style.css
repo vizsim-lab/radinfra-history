@@ -909,6 +909,11 @@ select {
     vertical-align: 0;
 }
 
+/* In place of a .tl-long on a phone. */
+.tl-short {
+    display: none;
+}
+
 .tl-readout strong {
     font-size: 16px;
     font-weight: 700;
@@ -1364,9 +1369,13 @@ select {
         font-size: 14px;
     }
 
-    /* "Datenstand" and "gesamt" are enough on a phone. */
+    /* "Datenstand" and "gesamt" (or "Auswahl") are enough on a phone. */
     .tl-long {
         display: none;
+    }
+
+    .tl-short {
+        display: inline;
     }
 
     /* Out from under the panel: the zoom buttons sit above the timeline, and step

@@ -558,17 +558,23 @@ async function main() {
         }) : null;
         const describeImagery = bindBasemapSwitch(imagery, () => snapshots[index].date, imageryList?.series);
 
+        // A hidden category is gone from the map and from the numbers under it.
+        const hidden = new Set();
         const legend = buildLegend(groups, snapshots, (groupId, visible) => {
             const group = groups.find((g) => g.id === groupId);
             for (const id of Object.keys(TIERS).map((tier) => historyLayerId(group, tier))) {
                 if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
             }
+            if (visible) hidden.delete(groupId);
+            else hidden.add(groupId);
+            recount();
         });
         const table = createTable(snapshots);
 
         const readoutDate = document.getElementById('tl-date');
         const readoutTotal = document.getElementById('tl-total');
         const readoutScope = document.getElementById('tl-scope');
+        const readoutWhat = document.getElementById('tl-what');
         const legendDate = document.getElementById('legend-date');
         const changeTo = document.getElementById('change-to');
         const playButton = document.getElementById('tl-play');
@@ -580,9 +586,48 @@ async function main() {
         let playTimer = null;
         let changeFrom = () => 0;
 
+        // What the line, the total and the tables count: the area's km of the
+        // categories shown. What changed in OSM is counted over all of them, so with
+        // some hidden it would not add up to the line, and is left out.
+        const counted = () => {
+            if (!hidden.size) return { total: scope.total, steps: scope.steps };
+            const shown = groups.filter((g) => !hidden.has(g.id));
+            return {
+                total: snapshots.map((_, i) => shown.reduce((sum, g) => sum + (scope.kmByGroup.get(g.id)?.[i] ?? 0), 0)),
+                steps: snapshots.map(() => null),
+            };
+        };
+        let view = counted();
+
         const updateChanges = () => {
             changeTo.textContent = formatShortDate(snapshots[index].date);
-            renderChanges(groups, scope, snapshots, changeFrom(), index);
+            renderChanges(groups, scope, snapshots, changeFrom(), index, hidden);
+        };
+
+        // "Deutschland gesamt", or with categories hidden "Deutschland, 3
+        // Führungsformen" (on a phone "Auswahl") and, on hover, which ones.
+        const describeCount = () => {
+            const label = readoutWhat.parentElement;
+            const shown = [...groups].reverse().filter((g) => !hidden.has(g.id));
+            readoutScope.textContent = hidden.size ? `${scope.name}, ` : `${scope.name} `;
+            if (!hidden.size) {
+                readoutWhat.textContent = 'gesamt';
+                delete label.dataset.tip;
+                return;
+            }
+            const part = (cls, text) => {
+                const node = document.createElement('span');
+                node.className = cls;
+                node.textContent = text;
+                return node;
+            };
+            readoutWhat.replaceChildren(
+                part('tl-long', shown.length === 0 ? 'keine Führungsform'
+                    : `${shown.length} Führungsform${shown.length === 1 ? '' : 'en'}`),
+                part('tl-short', 'Auswahl'),
+            );
+            label.dataset.tip = shown.length ? `Gezählt: ${shown.map((g) => g.label).join(', ')}.`
+                : 'Alle Führungsformen sind ausgeblendet.';
         };
 
         // Readout, legend, chart and table follow at once; the map gets the date
@@ -590,7 +635,7 @@ async function main() {
         const show = (i) => {
             index = i;
             readoutDate.textContent = formatDate(snapshots[i].date);
-            readoutTotal.textContent = formatKm(scope.total[i]);
+            readoutTotal.textContent = formatKm(view.total[i]);
             legendDate.textContent = formatShortDate(snapshots[i].date);
             legend.update(i);
             updateChanges();
@@ -610,14 +655,20 @@ async function main() {
             notes: scope.notes,
         });
 
+        // Everything under the map that follows the area and the categories shown.
+        function recount() {
+            view = counted();
+            control.setValues(view.total, { steps: view.steps, notes: scope.notes });
+            table.setValues(view.total, view.steps, hidden.size ? 'Auswahl' : 'gesamt');
+            describeCount();
+            readoutTotal.textContent = formatKm(view.total[index]);
+            updateChanges();
+        }
+
         const setScope = (next) => {
             scope = next;
             legend.setData(scope.kmByGroup);
-            control.setValues(scope.total, { steps: scope.steps, notes: scope.notes });
-            table.setValues(scope.total, scope.steps);
-            readoutScope.textContent = `${scope.name} `;
-            readoutTotal.textContent = formatKm(scope.total[index]);
-            updateChanges();
+            recount();
             writeURL();
         };
 

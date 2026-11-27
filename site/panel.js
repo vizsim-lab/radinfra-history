@@ -80,7 +80,8 @@ export function buildLegend(groups, snapshots, onToggle) {
 }
 
 // The timeline's table view: total km per snapshot, and the km changed in OSM
-// since the one before where the build has them (areas.js, activityOf).
+// since the one before where the build has them (areas.js, activityOf). The total
+// is headed "gesamt", or "Auswahl" while categories are hidden.
 export function createTable(snapshots) {
     const table = document.getElementById('tl-table');
     const tbody = table.querySelector('tbody');
@@ -91,9 +92,9 @@ export function createTable(snapshots) {
         return node;
     };
     return {
-        setValues(totals, steps = []) {
+        setValues(totals, steps = [], totalLabel = 'gesamt') {
             const withSteps = steps.some(Boolean);
-            head.replaceChildren(th('Stand'), th('gesamt'), ...(withSteps ? [th('in OSM geändert')] : []));
+            head.replaceChildren(th('Stand'), th(totalLabel), ...(withSteps ? [th('in OSM geändert')] : []));
             tbody.replaceChildren();
             snapshots.forEach((snapshot, i) => {
                 const tr = document.createElement('tr');
@@ -129,8 +130,9 @@ function formatDelta(value) {
 }
 
 // What changed in the selected area between two snapshots, per category. Rows
-// without any km at either date are left out; the sum covers all of them.
-export function renderChanges(groups, scope, snapshots, fromIndex, toIndex) {
+// without any km at either date are left out; the sum covers all of them. Hidden
+// categories (`hidden`, their ids) are neither listed nor summed.
+export function renderChanges(groups, scope, snapshots, fromIndex, toIndex, hidden = new Set()) {
     const table = document.getElementById('change-table');
     const cell = (tag, text, cls) => {
         const node = document.createElement(tag);
@@ -153,6 +155,7 @@ export function renderChanges(groups, scope, snapshots, fromIndex, toIndex) {
     let sumFrom = 0;
     let sumTo = 0;
     for (const group of [...groups].reverse()) {
+        if (hidden.has(group.id)) continue;
         const km = scope.kmByGroup.get(group.id);
         const from = km?.[fromIndex] ?? 0;
         const to = km?.[toIndex] ?? 0;
