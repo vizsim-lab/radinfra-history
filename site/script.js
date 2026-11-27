@@ -1,3 +1,8 @@
+// MapLibre is an ES module only since version 6. Imported by its full URL: an
+// import map would need Safari 16.4, MapLibre itself 15.4. index.html preloads
+// the same URL and has the stylesheet of the same version.
+import * as maplibregl from 'https://unpkg.com/maplibre-gl@6.20.0/dist/maplibre-gl.mjs';
+
 import {
     AREA_NOTES,
     ATTRIBUTION,
@@ -440,6 +445,9 @@ function areaScope(area, groups, snapshots, areas) {
 }
 
 async function main() {
+    // Since MapLibre 6 its workers load a module of their own: started now, they
+    // arrive while the data below loads instead of after it.
+    maplibregl.prewarm();
     setupTooltips();
     setupPanel();
     trackTimelineHeight();
