@@ -1058,12 +1058,32 @@ select {
     color: #d1d5db;
 }
 
-.tl-tooltip .tl-tooltip__step {
-    max-width: 250px;
+.tl-tooltip__head {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+/* What changed in OSM, in the bars' colour: the sum's change, then its parts,
+   each kept whole, as many to a line as fit. */
+.tl-tooltip .tl-tooltip__net {
     margin-top: 2px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: #fde68a;
+}
+
+.tl-tooltip__parts {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0 8px;
+    max-width: 260px;
     font-size: 11px;
-    white-space: normal;
-    text-align: center;
+    font-variant-numeric: tabular-nums;
+}
+
+.tl-tooltip .tl-tooltip__parts span {
     color: #fde68a;
 }
 

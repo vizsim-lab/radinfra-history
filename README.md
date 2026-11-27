@@ -198,6 +198,15 @@ areas get them with their km (`act` in the bundles, see
 [pipeline/areas.py](pipeline/areas.py)); builds from before November 2026 have none,
 and the page then draws no bars.
 
+With legend rows hidden, line and bars count the rows shown. For that the bundles
+have the same numbers by legend row too: what came and went per row (`cw`), and
+every change of row with the row it came from (`ch`). Seen from the rows shown, a
+change from a hidden row is a gain and one to a hidden row a loss; for Germany in
+the first quarter of 2022, with "Führungsform unklar" hidden, 1,155 km came from it
+and 56 km went to it. That makes the bundles 40 % larger (Germany and its Länder,
+loaded with the page, 163 instead of 34 KB compressed); builds from before 27
+November 2026 have none, and the page then draws no bars while rows are hidden.
+
 ## What the map shows and what it does not
 
 - **What OSM knew, not what was built.** Mapping campaigns show up as jumps.

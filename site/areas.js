@@ -52,28 +52,53 @@ function maskFilter(area, get) {
     return parts.length ? ['any', ...parts] : NONE;
 }
 
-// areas/index.json: rows of `fields`, the region first.
+// areas/index.json: rows of `fields`, the region first; `groups`, the legend rows
+// the bundles' `cw` and `ch` number.
 export function readIndex(data) {
     const at = Object.fromEntries(data.fields.map((name, i) => [name, i]));
     const list = data.areas.map((row) => ({
         slug: row[at.slug], name: row[at.name], level: row[at.level], parent: row[at.parent],
         bundle: row[at.bundle], km2: row[at.km2], bbox: row[at.bbox],
     }));
-    return { list, aliases: data.aliases ?? {} };
+    return { list, aliases: data.aliases ?? {}, groups: data.groups ?? [] };
 }
 
-// What changed in OSM at each snapshot since the one before, from an area's `act`
-// rows [step, changed, came, went] (pipeline/areas.py): km whose legend row changed
-// on the same object, that came under an id with nothing before, and that went
-// from one. null for the first snapshot, and for all while a build has no `act`
-// (before November 2026).
-export function activityOf(area, count) {
-    if (!area?.act) return Array(count).fill(null);
-    const steps = Array.from({ length: count }, (_, i) => (i ? { changed: 0, came: 0, went: 0 } : null));
-    for (const [step, changed, came, went] of area.act) {
-        if (steps[step]) Object.assign(steps[step], { changed, came, went });
+// What changed in OSM at each snapshot since the one before (pipeline/areas.py):
+// km whose legend row changed on the same object, that came under an id with
+// nothing before, and that went from one. For every row, from an area's `act`
+// [step, changed, came, went]. For the rows `shown` (a Set of their ids; `groups`
+// the index's), from `cw` [step, row, came, went] and `ch` [step, from, to, km]: a
+// change between two rows shown is a change, from a row left out to one shown
+// `gained`, the other way round `lost`. null for the first snapshot, and for all
+// while a build has no such numbers (`act` before November 2026, `cw` and `ch`
+// before 27 November 2026).
+export function activityOf(area, count, { groups = [], shown = null } = {}) {
+    const none = Array(count).fill(null);
+    const steps = () => Array.from({ length: count },
+        (_, i) => (i ? { changed: 0, came: 0, went: 0, gained: 0, lost: 0 } : null));
+    if (!shown) {
+        if (!area?.act) return none;
+        const out = steps();
+        for (const [step, changed, came, went] of area.act) {
+            if (out[step]) Object.assign(out[step], { changed, came, went });
+        }
+        return out;
     }
-    return steps;
+    if (!area?.cw || !area?.ch) return none;
+    const counted = groups.map((id) => shown.has(id));
+    const out = steps();
+    for (const [step, row, came, went] of area.cw) {
+        if (!out[step] || !counted[row]) continue;
+        out[step].came += came;
+        out[step].went += went;
+    }
+    for (const [step, from, to, km] of area.ch) {
+        if (!out[step]) continue;
+        if (counted[from] && counted[to]) out[step].changed += km;
+        else if (counted[to]) out[step].gained += km;
+        else if (counted[from]) out[step].lost += km;
+    }
+    return out;
 }
 
 export function createAreas(map, { index, loadBundle, tilesURL, encoding, outline, beforeId = undefined,
@@ -213,6 +238,8 @@ export function createAreas(map, { index, loadBundle, tilesURL, encoding, outlin
         const numbers = bundle?.areas?.[area.slug];
         area.km = numbers?.km ?? {};
         area.act = numbers?.act ?? null;
+        area.cw = numbers?.cw ?? null;
+        area.ch = numbers?.ch ?? null;
         show(area, { fit });
     }
 

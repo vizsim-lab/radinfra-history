@@ -7,9 +7,10 @@
 //
 // Under the line, a bar for each step between two snapshots says how many km
 // changed in OSM then (areas.js, activityOf): another legend row on the same
-// object, came, or went. Whether built or only mapped, the data cannot say, so the
-// bars do not either; where they are high and the line hardly moves, much was
-// changed and little added up.
+// object, came, or went, and with legend rows hidden, changed from or to one of
+// them. Whether built or only mapped, the data cannot say, so the bars do not
+// either; where they are high and the line hardly moves, much was changed and
+// little added up.
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 // The top margin holds the names of marked periods, above the line's reach.
@@ -68,12 +69,33 @@ const BAR_FLOOR_SHARE = 0.01;
 // The highest bar fills this much of the plot's height.
 const BAR_HEIGHT_SHARE = 0.4;
 
-const changedKm = (step) => (step ? step.changed + step.came + step.went : 0);
+export const changedKm = (step) => (step ? step.changed + step.came + step.went + step.gained + step.lost : 0);
 
-// "+1,2 km", "−3 km", "±0 km".
-function signed(km) {
+// "+1,2", "−3", "±0"; signed() with the unit.
+function signedNumber(km) {
     const sign = km >= 0.05 ? '+' : km <= -0.05 ? '−' : '±';
-    return `${sign}${formatKm(Math.abs(km) < 0.05 ? 0 : Math.abs(km))}`;
+    return `${sign}${formatKmNumber(Math.abs(km) < 0.05 ? 0 : Math.abs(km))}`;
+}
+
+function signed(km) {
+    return `${signedNumber(km)} km`;
+}
+
+// A step in short, in km: what came and went, what changed legend row, and with
+// rows hidden what changed from or to one of them. The sum moves by those, plus
+// what the objects that go on got longer or shorter, which is the rest: a way
+// split in two keeps its id on one part, which gets shorter, and the other part
+// comes. The signed parts add up to `net`, the sum's change.
+export function stepParts(step, net) {
+    const rest = net - (step.came - step.went + step.gained - step.lost);
+    return [
+        [step.came, `+${formatKmNumber(step.came)} eingetragen`],
+        [step.went, `−${formatKmNumber(step.went)} ausgetragen`],
+        [step.changed, `${formatKmNumber(step.changed)} gewechselt`],
+        [step.gained, `+${formatKmNumber(step.gained)} aus ausgeblendeten`],
+        [step.lost, `−${formatKmNumber(step.lost)} in ausgeblendete`],
+        [Math.abs(rest), `${signedNumber(rest)} ${rest > 0 ? 'länger' : 'kürzer'}`],
+    ].filter(([km]) => km >= 0.05).map(([, text]) => text);
 }
 
 export function createTimeline(container, {
@@ -245,32 +267,24 @@ export function createTimeline(container, {
             return;
         }
         tooltip.replaceChildren();
-        const value = document.createElement('strong');
-        value.textContent = formatKm(values[index]);
-        const when = document.createElement('span');
-        when.textContent = formatDate(snapshots[index].date);
-        tooltip.append(value, when);
-        // What changed in OSM since the snapshot before, next to what that did to
-        // the sum: much changed and the sum hardly moved means little added up.
-        // The sum moves by what came, less what went, plus what the objects that go
-        // on got longer or shorter, which is the rest: a way split in two keeps its
-        // id on one part, which gets shorter, and the other part comes.
+        const node = (tag, cls, text, parent = tooltip) => {
+            const n = document.createElement(tag);
+            if (cls) n.className = cls;
+            n.textContent = text;
+            parent.append(n);
+            return n;
+        };
+        const head = node('div', 'tl-tooltip__head', '');
+        node('strong', null, formatKm(values[index]), head);
+        node('span', null, formatDate(snapshots[index].date), head);
+        // What the sum did since the snapshot before, and what changed in OSM
+        // underneath: much changed and the sum hardly moved means little added up.
         const step = steps[index];
         if (changedKm(step) >= 0.05) {
             const net = values[index] - values[index - 1];
-            const resized = net - (step.came - step.went);
-            const parts = [[step.came, 'eingetragen'], [step.went, 'ausgetragen'],
-                [step.changed, 'Führungsform gewechselt']]
-                .filter(([km]) => km >= 0.05)
-                .map(([km, what]) => `${formatKm(km)} ${what}`);
-            if (Math.abs(resized) >= 0.05) {
-                parts.push(`bestehende Linien ${signed(resized)} (etwa geteilte Wege)`);
-            }
-            const since = document.createElement('span');
-            since.className = 'tl-tooltip__step';
-            since.textContent = `seit ${formatShortDate(snapshots[index - 1].date)} in OSM: ${parts.join(', ')}; `
-                + `Summe ${signed(net)}`;
-            tooltip.append(since);
+            node('span', 'tl-tooltip__net', `${signed(net)} seit ${formatShortDate(snapshots[index - 1].date)}`);
+            const parts = node('div', 'tl-tooltip__parts', '');
+            for (const part of stepParts(step, net)) node('span', null, part, parts);
         }
         // Shown first, so it can be measured and kept inside the chart.
         tooltip.classList.add('is-visible');

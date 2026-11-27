@@ -421,7 +421,6 @@ function extractScope(timeline) {
         area: null,
         kmByGroup: new Map(timeline.groups.map((g) => [g.id, g.km])),
         total: timeline.total_km,
-        steps: activityOf(null, timeline.snapshots.length),
         notes: AREA_NOTES[timeline.region?.toLowerCase()] ?? [],
     };
 }
@@ -439,7 +438,6 @@ function areaScope(area, groups, snapshots, areas) {
     const total = snapshots.map((_, i) => groups.reduce((sum, g) => sum + (area.km[g.id]?.[i] ?? 0), 0));
     return {
         name: area.slug === 'berlin' ? 'Berlin' : area.name, area, kmByGroup, total,
-        steps: activityOf(area, snapshots.length),
         notes: notesFor(area, areas),
     };
 }
@@ -586,15 +584,16 @@ async function main() {
         let playTimer = null;
         let changeFrom = () => 0;
 
-        // What the line, the total and the tables count: the area's km of the
-        // categories shown. What changed in OSM is counted over all of them, so with
-        // some hidden it would not add up to the line, and is left out.
+        // What the line, the bars, the total and the tables count: the area's km of
+        // the categories shown, and what changed in OSM among them.
         const counted = () => {
-            if (!hidden.size) return { total: scope.total, steps: scope.steps };
-            const shown = groups.filter((g) => !hidden.has(g.id));
+            const shown = hidden.size ? groups.filter((g) => !hidden.has(g.id)) : null;
+            const steps = activityOf(scope.area, snapshots.length,
+                { groups: areaIndex?.groups, shown: shown && new Set(shown.map((g) => g.id)) });
+            if (!shown) return { total: scope.total, steps };
             return {
                 total: snapshots.map((_, i) => shown.reduce((sum, g) => sum + (scope.kmByGroup.get(g.id)?.[i] ?? 0), 0)),
-                steps: snapshots.map(() => null),
+                steps,
             };
         };
         let view = counted();

@@ -1,5 +1,6 @@
-"""What changed in OSM per area and step (pipeline/areas.py, `act`), on hand-made
-snapshots: one case per row of streets, each far from the others."""
+"""What changed in OSM per area and step (pipeline/areas.py: `act`, and by legend
+row `cw` and `ch`), on hand-made snapshots: one case per row of streets, each far
+from the others."""
 
 import json
 from datetime import date
@@ -134,6 +135,41 @@ def test_the_halves_add_up_to_the_whole(bundle):
         assert halves == pytest.approx(kinds, abs=2)
     # Step 1: way/30 lies half in each; the split-off part (120 to 200 m) in the east.
     assert west[1][1] == 100 and east[1][1] == 100 + 80
+
+
+@pytest.fixture
+def rows(bundle, tmp_path):
+    """The legend rows the bundles number (index.json `groups`)."""
+    return json.loads((tmp_path / "areas" / "index.json").read_text())["groups"]
+
+
+def by_row(entry, rows):
+    """({(step, row): (came, went)}, {(step, from, to): changed}) in metres."""
+    came_went = {(k, rows[g]): (round(c * 1000), round(w * 1000)) for k, g, c, w in entry["cw"]}
+    changes = {(k, rows[f], rows[t]): round(v * 1000) for k, f, t, v in entry["ch"]}
+    return came_went, changes
+
+
+def test_by_legend_row_what_came_went_and_where_it_changed_from(bundle, rows):
+    came_went, changes = by_row(bundle["teststadt"], rows)
+    # way/10, the one change of row; way/20 stays within Schutzstreifen.
+    assert changes == {(2, "Schutzstreifen", "Radfahrstreifen"): 200}
+    assert came_went == {
+        (1, "Fahrradstrasse keine Kfz"): (200, 200),  # way/30 came, way/70 went
+        (1, "Gemeinsamer Geh u Radweg"): (80, 0),  # the split-off part of way/50
+        (2, "Getrennter Radweg"): (200, 200),  # way/41 came, way/40's road side went
+        (2, "Fahrradstrasse keine Kfz"): (0, 200),  # way/30 went
+        (3, "Fahrradstrasse keine Kfz"): (200, 0),  # way/70 came back
+    }
+
+
+@pytest.mark.parametrize("slug", ["teststadt", "bezirk-west", "bezirk-ost"])
+def test_the_rows_add_up_to_act(bundle, rows, slug):
+    came_went, changes = by_row(bundle[slug], rows)
+    for step, (changed, came, went) in activity(bundle[slug]).items():
+        assert sum(v for (k, *_), v in changes.items() if k == step) == pytest.approx(changed, abs=2)
+        assert sum(c for (k, _), (c, _w) in came_went.items() if k == step) == pytest.approx(came, abs=2)
+        assert sum(w for (k, _), (_c, w) in came_went.items() if k == step) == pytest.approx(went, abs=2)
 
 
 def test_the_km_stay_as_they_were(bundle):

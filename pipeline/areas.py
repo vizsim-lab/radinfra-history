@@ -24,13 +24,23 @@ its id on one part, which gets shorter, and the other part comes. So an area's s
 moves by what came, less what went, plus what the objects that go on got longer
 or shorter, which the page takes as the rest.
 
+The same goes by legend row too, so the page can count any choice of rows: what
+came and went per row, and every change of row with the row it came from. Seen
+from a choice of rows, a change from a row left out to one in it is a gain, the
+other way round a loss.
+
 Writes, into the build:
 
-    areas/index.json      every area: name, level, parent, bundle, km², bbox
+    areas/index.json      every area: name, level, parent, bundle, km², bbox;
+                          `groups`, the legend rows the bundles number
     areas/<bundle>.json   for the areas of a Kreis:
                           km   km per legend row and snapshot
                           act  [step, changed, came, went]: km of the step from
                                snapshot step-1 to step, for the steps with any
+                          cw   [step, row, came, went] per legend row
+                          ch   [step, from row, to row, km]: the changes of row
+                          (act is cw and ch over all rows, kept for pages
+                          from before them)
     areas.pmtiles         the boundaries as tiles (outline, dimming, picking)
     outline.geojson       the region's own outline, simplified
 """
@@ -229,8 +239,11 @@ def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_dir, region, 
     con = duckdb.connect()
     last_vid = con.execute(f"SELECT coalesce(max(vid), 0) FROM read_parquet('{versions_parquet}')").fetchone()[0]
     diff = np.zeros((len(areas), len(groups), n + 1))
-    # km per area and step that changed category, came and went (module docstring).
+    # km per area and step that changed category, came and went (module docstring),
+    # and the same by legend row: came and went per row, changes per pair of rows.
     activity = np.zeros((len(ACTIVITY), len(areas), n + 1))
+    came_went = np.zeros((2, len(areas), len(groups), n + 1))
+    pairs = np.zeros((len(areas), len(groups), len(groups), n + 1))
     # What the newest snapshot changed, and how much of it in the region: a new
     # kind of extract would show up as changes outside, at its edge.
     changes = np.zeros(4, dtype=np.int64)  # start, end, start inside, end inside
@@ -272,7 +285,12 @@ def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_dir, region, 
         np.add.at(diff, (area_i, gi[line_i], k1[line_i] + 1), -length)
         for j, (kind, step) in enumerate(zip(kinds, (k0, k0, k1 + 1))):
             take = kind[line_i]
-            np.add.at(activity[j], (area_i[take], step[line_i][take]), length[take])
+            a, li, m = area_i[take], line_i[take], length[take]
+            np.add.at(activity[j], (a, step[li]), m)
+            if j == 0:
+                np.add.at(pairs, (a, before[li], gi[li], step[li]), m)
+            else:
+                np.add.at(came_went[j - 1], (a, gi[li], step[li]), m)
 
         in_region = np.zeros(len(lines), dtype=bool)
         in_region[line_i[area_i == 0]] = True
@@ -281,6 +299,8 @@ def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_dir, region, 
     km = np.cumsum(diff, axis=2)[:, :, :n] / 1000.0
 
     activity = np.round(activity / 1000.0, 2) + 0.0
+    came_went = np.round(came_went / 1000.0, 2) + 0.0
+    pairs = np.round(pairs / 1000.0, 2) + 0.0
     numbers = []
     for a in range(len(areas)):
         series = {}
@@ -289,7 +309,16 @@ def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_dir, region, 
             if values.any():
                 series[group["id"]] = [float(v) for v in values]
         steps = np.flatnonzero(activity[:, a].any(axis=0))
-        numbers.append({"km": series, "act": [[int(k), *(float(v) for v in activity[:, a, k])] for k in steps]})
+        # Step first, so the rows come in the order of the steps.
+        by_row = came_went[:, a].transpose(0, 2, 1)
+        by_pair = pairs[a].transpose(2, 0, 1)
+        numbers.append({
+            "km": series,
+            "act": [[int(k), *(float(v) for v in activity[:, a, k])] for k in steps],
+            "cw": [[int(k), int(g), float(by_row[0, k, g]), float(by_row[1, k, g])]
+                   for k, g in zip(*np.nonzero(by_row.any(axis=0)))],
+            "ch": [[int(k), int(f), int(t), float(by_pair[k, f, t])] for k, f, t in zip(*np.nonzero(by_pair))],
+        })
     index = _write(Path(out_dir), areas, aliases, numbers, timeline, groups)
 
     top = areas[0]
@@ -300,7 +329,9 @@ def build_areas(snapshot_pbf, versions_parquet, timeline_json, out_dir, region, 
     print(f"  {len(areas)} areas ({', '.join(f'{c} {PLURAL[lv]}' for lv, c in per_level.items())}); "
           f"{top['name']} now {top_now:,.0f} km of {timeline['total_km'][-1]:,.0f} km in the extract", flush=True)
     print(f"  changed in OSM in {top['name']}, all steps: "
-          + ", ".join(f"{activity[j, 0].sum():,.0f} km {name}" for j, name in enumerate(ACTIVITY)), flush=True)
+          + ", ".join(f"{activity[j, 0].sum():,.0f} km {name}" for j, name in enumerate(ACTIVITY))
+          + f"; by legend row {sum(len(e['cw']) for e in numbers):,} rows came/went, "
+          f"{sum(len(e['ch']) for e in numbers):,} changes of row", flush=True)
     print(f"  newest snapshot: {changes[0]:,} versions start, {changes[1]:,} end; "
           f"in {top['name']} {changes[2]:,} and {changes[3]:,}", flush=True)
     return index

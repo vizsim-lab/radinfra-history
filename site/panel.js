@@ -1,6 +1,6 @@
 // The side panel: legend, area picker, change table, and the background switch.
 
-import { formatDate, formatKm, formatKmNumber, formatShortDate, sparkline } from './timeline.js';
+import { changedKm, formatDate, formatKm, formatKmNumber, formatShortDate, sparkline, stepParts } from './timeline.js';
 
 // Legend swatch mirrors the mark: a short line, dashed where the style dashes it.
 export function swatch(color, dash) {
@@ -106,15 +106,9 @@ export function createTable(snapshots) {
                 if (withSteps) {
                     const step = steps[i];
                     const changed = document.createElement('td');
-                    changed.textContent = step ? formatKm(step.changed + step.came + step.went) : '–';
-                    if (step) {
-                        // As the timeline's tooltip: the rest of the sum's change is what
-                        // the objects that go on got longer or shorter.
-                        const resized = totals[i] - totals[i - 1] - (step.came - step.went);
-                        changed.title = `${formatKm(step.came)} eingetragen, ${formatKm(step.went)} ausgetragen, `
-                            + `${formatKm(step.changed)} Führungsform gewechselt, bestehende Linien `
-                            + `${resized < 0 ? '−' : '+'}${formatKm(Math.abs(resized))}`;
-                    }
+                    changed.textContent = step ? formatKm(changedKm(step)) : '–';
+                    // As in the timeline's tooltip.
+                    if (step) changed.title = `in km: ${stepParts(step, totals[i] - totals[i - 1]).join(', ')}`;
                     tr.append(changed);
                 }
                 tbody.appendChild(tr);
