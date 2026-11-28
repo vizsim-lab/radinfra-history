@@ -187,6 +187,11 @@
                         bei radinfra.de; die Zahlen enthalten sie.
                     </p>
                     <p>
+                        „Ausschnitt“ über der Zeitleiste zählt statt des Gebiets, was die Karte neben
+                        Panel und Zeitleiste zeigt, ab Zoomstufe 9, gerechnet aus den geladenen Kacheln;
+                        auf etwa ein halbes Prozent genau, ohne die Balken der Änderungen.
+                    </p>
+                    <p>
                         Sprünge in einem Gebiet sind oft eine Umstellung der Kartierung, nicht der
                         Straßen. In Berlin etwa fällt die Kurve 2021 bis 2024, weil Radwege, die an der
                         Straße eingetragen waren, zu eigenen Wegen wurden, anfangs oft noch ohne
@@ -249,9 +254,16 @@
                 <strong id="tl-date">…</strong>
             </div>
             <span id="tl-aerial" class="tl-chip" tabindex="0" hidden></span>
+            <!-- What the numbers count: the area picked or what the map shows (viewport.js). -->
             <div class="tl-readout tl-readout--right">
-                <span class="tl-readout__label"><span class="tl-long" id="tl-scope">Deutschland </span><span id="tl-what">gesamt</span></span>
+                <div class="tl-scope" role="radiogroup" aria-label="Zählen für">
+                    <button type="button" id="tl-scope" class="tl-scope__option" role="radio" aria-checked="true">Deutschland</button>
+                    <!-- title, not data-tip: ui.js takes a click on a [data-tip] for the hint. -->
+                    <button type="button" id="tl-scope-view" class="tl-scope__option" role="radio" aria-checked="false"
+                            title="Zählt, was die Karte neben Panel und Zeitleiste zeigt; ab Zoomstufe 9">Ausschnitt</button>
+                </div>
                 <strong id="tl-total">…</strong>
+                <span id="tl-what" class="tl-readout__note" hidden></span>
             </div>
         </div>
         <div id="timeline" class="timeline"></div>

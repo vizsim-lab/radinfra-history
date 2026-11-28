@@ -909,9 +909,56 @@ select {
     vertical-align: 0;
 }
 
-/* In place of a .tl-long on a phone. */
-.tl-short {
-    display: none;
+/* What the numbers count: the area or what the map shows. As small as a label,
+   the choice in the accent's soft tone, as the background chips. */
+.tl-scope {
+    display: inline-flex;
+    align-self: flex-end;
+    border: 1px solid var(--ui-border);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.tl-scope__option {
+    max-width: 160px;
+    padding: 2px 8px;
+    border: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 10.5px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--ui-text-sub);
+    cursor: pointer;
+}
+
+.tl-scope__option + .tl-scope__option {
+    border-left: 1px solid var(--ui-border);
+}
+
+.tl-scope__option:hover {
+    background: var(--ui-hover);
+}
+
+.tl-scope__option[aria-checked="true"] {
+    background: var(--ui-accent-soft);
+    color: var(--ui-text-strong);
+}
+
+/* Too far out to count what the map shows; a click zooms in. */
+.tl-scope__option.is-off {
+    opacity: 0.5;
+}
+
+.tl-readout__note {
+    white-space: nowrap;
+    font-size: 10.5px;
+    font-weight: 600;
+    color: var(--ui-text-sub);
 }
 
 .tl-readout strong {
@@ -1389,13 +1436,37 @@ select {
         font-size: 14px;
     }
 
-    /* "Datenstand" and "gesamt" (or "Auswahl") are enough on a phone. */
+    /* "Datenstand" is enough on a phone. */
     .tl-long {
         display: none;
     }
 
-    .tl-short {
-        display: inline;
+    /* The switch and the total take a row of their own, under buttons and date. */
+    .tl-head {
+        flex-wrap: wrap;
+        row-gap: 6px;
+    }
+
+    .tl-readout--right {
+        flex: 1 0 100%;
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 2px 8px;
+        margin-left: 0;
+    }
+
+    .tl-readout--right .tl-scope {
+        align-self: center;
+    }
+
+    .tl-readout--right .tl-readout__note {
+        flex-basis: 100%;
+    }
+
+    .tl-scope__option {
+        max-width: 140px;
     }
 
     /* Out from under the panel: the zoom buttons sit above the timeline, and step

@@ -207,6 +207,20 @@ and 56 km went to it. That makes the bundles 40 % larger (Germany and its Lände
 loaded with the page, 163 instead of 34 KB compressed); builds from before 27
 November 2026 have none, and the page then draws no bars while rows are hidden.
 
+**What the map shows.** A switch above the total counts, instead of the area, the
+part of the map not covered by panel and timeline
+([site/viewport.js](site/viewport.js)). There is nothing to fetch for it: every tile
+holds every version with its dates, so the tiles the map has loaded give the whole
+timeline at once. Each line counts with its part inside the view and inside its own
+tile (tiles repeat what crosses their edge), measured as the pipeline measures.
+Against the pipeline's own numbers for the same box, the count is within 0.1 % from
+the detail tiles (z12 and closer) and 0.5 % from the simplified overview tiles
+(z9–11); below z9 the far tiles leave short lines out, so the switch counts from
+z9 on. Tiles have no ids or previous categories at the overview zooms, so there are
+no bars for a view. The first count after a zoom in Berlin or the Ruhr takes about
+0.7 s, most of it MapLibre decoding the tiles again for the query; tiles wholly in
+view are kept, so moving the map costs little more than the tiles on its edge.
+
 ## What the map shows and what it does not
 
 - **What OSM knew, not what was built.** Mapping campaigns show up as jumps.

@@ -57,6 +57,7 @@ import {
     swatch,
 } from './panel.js';
 import { createAreaSearch } from './search.js';
+import { createViewCounter, freeBounds } from './viewport.js';
 import { createTimeline, formatDate, formatKm, formatShortDate } from './timeline.js';
 import {
     MOBILE_QUERY,
@@ -404,20 +405,23 @@ function initialIndex(snapshots) {
 }
 
 // ?t= for the date (left out for the newest), ?area= for the area (left out for
-// the region as a whole), so a view can be shared.
-function writeStateToURL(snapshots, index, areaSlug, topSlug) {
+// the region as a whole), ?view=1 while the numbers count what the map shows, so
+// a view can be shared.
+function writeStateToURL(snapshots, index, areaSlug, topSlug, inView) {
     const url = new URL(window.location.href);
     if (index === snapshots.length - 1) url.searchParams.delete('t');
     else url.searchParams.set('t', snapshots[index].date);
     if (!areaSlug || areaSlug === topSlug) url.searchParams.delete('area');
     else url.searchParams.set('area', areaSlug);
+    if (inView) url.searchParams.set('view', '1');
+    else url.searchParams.delete('view');
     window.history.replaceState(window.history.state, '', url);
 }
 
 // Numbers for the whole extract, from the timeline, when no area data is there.
 function extractScope(timeline) {
     return {
-        name: 'Ausschnitt',
+        name: timeline.region || 'Region',
         area: null,
         kmByGroup: new Map(timeline.groups.map((g) => [g.id, g.km])),
         total: timeline.total_km,
@@ -571,18 +575,35 @@ async function main() {
 
         const readoutDate = document.getElementById('tl-date');
         const readoutTotal = document.getElementById('tl-total');
-        const readoutScope = document.getElementById('tl-scope');
+        const scopeArea = document.getElementById('tl-scope');
+        const scopeView = document.getElementById('tl-scope-view');
         const readoutWhat = document.getElementById('tl-what');
         const legendDate = document.getElementById('legend-date');
         const changeTo = document.getElementById('change-to');
         const playButton = document.getElementById('tl-play');
         const applier = createTimeApplier(map);
+        // The numbers under the map are those of `scope`: the area picked
+        // (`areaNumbers`), or, while `wantView` and the map is close enough, those
+        // of what it shows (`inView`).
         let scope = extractScope(timeline);
-        const writeURL = debounce(() => writeStateToURL(snapshots, index, scope.area?.slug,
-            areaIndex?.list[0]?.slug), URL_DEBOUNCE_MS);
+        let areaNumbers = scope;
+        let wantView = new URLSearchParams(window.location.search).has('view');
+        let inView = false;
+        const writeURL = debounce(() => writeStateToURL(snapshots, index, areaNumbers.area?.slug,
+            areaIndex?.list[0]?.slug, wantView), URL_DEBOUNCE_MS);
         let playing = false;
         let playTimer = null;
         let changeFrom = () => 0;
+
+        const viewCounter = createViewCounter(map, {
+            snapshots,
+            rows: groups.length,
+            rowOf: new Map([...groupOf].map(([category, group]) => [category, groups.indexOf(group)])),
+            tiers: [
+                { source: OVERVIEW_SOURCE_ID, sourceLayer: OVERVIEW_SOURCE_LAYER, minzoom: OVERVIEW_MINZOOM, maxzoom: DETAIL_MINZOOM },
+                { source: SOURCE_ID, sourceLayer: SOURCE_LAYER, minzoom: DETAIL_MINZOOM, maxzoom: Infinity },
+            ],
+        });
 
         // What the line, the bars, the total and the tables count: the area's km of
         // the categories shown, and what changed in OSM among them.
@@ -596,37 +617,35 @@ async function main() {
                 steps,
             };
         };
-        let view = counted();
+        let counts = counted();
 
         const updateChanges = () => {
             changeTo.textContent = formatShortDate(snapshots[index].date);
             renderChanges(groups, scope, snapshots, changeFrom(), index, hidden);
         };
 
-        // "Deutschland gesamt", or with categories hidden "Deutschland, 3
-        // Führungsformen" (on a phone "Auswahl") and, on hover, which ones.
-        const describeCount = () => {
-            const label = readoutWhat.parentElement;
+        // The switch names the area and marks what the numbers count. A note under
+        // the total says when categories are hidden (on hover, which are counted),
+        // and when the map is too far out to count what it shows.
+        const describeReadout = () => {
+            scopeArea.textContent = areaNumbers.name;
+            scopeArea.setAttribute('aria-checked', String(!inView));
+            scopeView.setAttribute('aria-checked', String(inView));
+            scopeView.classList.toggle('is-off', !viewCounter.canCount());
             const shown = [...groups].reverse().filter((g) => !hidden.has(g.id));
-            readoutScope.textContent = hidden.size ? `${scope.name}, ` : `${scope.name} `;
-            if (!hidden.size) {
-                readoutWhat.textContent = 'gesamt';
-                delete label.dataset.tip;
-                return;
+            const notes = [];
+            if (hidden.size) {
+                notes.push(shown.length === 0 ? 'keine Führungsform'
+                    : `${shown.length} Führungsform${shown.length === 1 ? '' : 'en'}`);
             }
-            const part = (cls, text) => {
-                const node = document.createElement('span');
-                node.className = cls;
-                node.textContent = text;
-                return node;
-            };
-            readoutWhat.replaceChildren(
-                part('tl-long', shown.length === 0 ? 'keine Führungsform'
-                    : `${shown.length} Führungsform${shown.length === 1 ? '' : 'en'}`),
-                part('tl-short', 'Auswahl'),
-            );
-            label.dataset.tip = shown.length ? `Gezählt: ${shown.map((g) => g.label).join(', ')}.`
-                : 'Alle Führungsformen sind ausgeblendet.';
+            if (wantView && !inView) notes.push(`Ausschnitt ab Zoomstufe ${OVERVIEW_MINZOOM}`);
+            readoutWhat.textContent = notes.join(' · ');
+            readoutWhat.hidden = !notes.length;
+            if (!hidden.size) delete readoutWhat.dataset.tip;
+            else {
+                readoutWhat.dataset.tip = shown.length ? `Gezählt: ${shown.map((g) => g.label).join(', ')}.`
+                    : 'Alle Führungsformen sind ausgeblendet.';
+            }
         };
 
         // Readout, legend, chart and table follow at once; the map gets the date
@@ -634,7 +653,7 @@ async function main() {
         const show = (i) => {
             index = i;
             readoutDate.textContent = formatDate(snapshots[i].date);
-            readoutTotal.textContent = formatKm(view.total[i]);
+            readoutTotal.textContent = formatKm(counts.total[i]);
             legendDate.textContent = formatShortDate(snapshots[i].date);
             legend.update(i);
             updateChanges();
@@ -656,11 +675,11 @@ async function main() {
 
         // Everything under the map that follows the area and the categories shown.
         function recount() {
-            view = counted();
-            control.setValues(view.total, { steps: view.steps, notes: scope.notes });
-            table.setValues(view.total, view.steps, hidden.size ? 'Auswahl' : 'gesamt');
-            describeCount();
-            readoutTotal.textContent = formatKm(view.total[index]);
+            counts = counted();
+            control.setValues(counts.total, { steps: counts.steps, notes: scope.notes });
+            table.setValues(counts.total, counts.steps, hidden.size ? 'Auswahl' : 'gesamt');
+            describeReadout();
+            readoutTotal.textContent = formatKm(counts.total[index]);
             updateChanges();
         }
 
@@ -671,11 +690,78 @@ async function main() {
             writeURL();
         };
 
+        // What the map shows (viewport.js): counted once it has drawn a move, and
+        // the area's numbers again where it is too far out for a count.
+        // The readout first, so the note it may drop no longer takes room from the
+        // map when the free part is measured.
+        let countedBounds = null;
+        const updateView = () => {
+            inView = wantView && viewCounter.canCount();
+            describeReadout();
+            countedBounds = inView ? freeBounds(map) : null;
+            const km = countedBounds && viewCounter.count(countedBounds);
+            inView = Boolean(km);
+            setScope(km ? {
+                name: 'Ausschnitt',
+                area: null,
+                kmByGroup: new Map(groups.map((g, i) => [g.id, km[i]])),
+                total: snapshots.map((_, k) => km.reduce((sum, series) => sum + series[k], 0)),
+                notes: [],
+            } : areaNumbers);
+        };
+        // A new area's numbers. Picked by hand, it ends the count of the view.
+        const setArea = (next, { keepView = false } = {}) => {
+            areaNumbers = next;
+            if (!keepView) wantView = false;
+            updateView();
+        };
+        let viewStale = wantView;
+        let viewTimer = null;
+        const staleView = () => {
+            if (wantView) viewStale = true;
+        };
+        map.on('moveend', () => {
+            staleView();
+            describeReadout();
+        });
+        map.on('resize', staleView);
+        map.on('idle', () => {
+            if (!viewStale) return;
+            viewStale = false;
+            window.clearTimeout(viewTimer);
+            viewTimer = window.setTimeout(updateView, 150);
+        });
+        // The panel folding, or the timeline growing a line, changes what they cover.
+        const covers = new ResizeObserver(() => {
+            if (!inView || String(freeBounds(map)) === String(countedBounds)) return;
+            viewStale = true;
+            map.triggerRepaint();
+        });
+        covers.observe(document.getElementById('panel'));
+        covers.observe(document.getElementById('timeline-panel'));
+        scopeArea.addEventListener('click', () => {
+            if (!wantView) return;
+            wantView = false;
+            updateView();
+        });
+        scopeView.addEventListener('click', () => {
+            wantView = true;
+            if (viewCounter.canCount()) updateView();
+            else {
+                describeReadout();
+                writeURL();
+                viewStale = true;
+                map.easeTo({ zoom: OVERVIEW_MINZOOM + 0.5 });
+            }
+        });
+
         changeFrom = fillChangeFrom(snapshots, updateChanges);
 
         // On a phone the unfolded panel covers the map, so it folds while an
         // area is picked and comes back as it was afterwards.
         let reopenPanel = false;
+        // The first area is the one the page starts with, not one picked.
+        let firstArea = true;
         const areas = areaIndex ? createAreas(map, {
             index: areaIndex,
             loadBundle,
@@ -685,7 +771,8 @@ async function main() {
             onSelect: (area) => {
                 setSearchValue(area);
                 describeArea(area, areas);
-                setScope(areaScope(area, groups, snapshots, areas));
+                setArea(areaScope(area, groups, snapshots, areas), { keepView: firstArea });
+                firstArea = false;
             },
             onPicking: (on) => {
                 document.body.classList.toggle('is-picking', on);
@@ -709,7 +796,7 @@ async function main() {
                 { fit: Boolean(new URLSearchParams(window.location.search).get('area')) });
         } else {
             document.querySelector('.legend-section[data-section="area"]').hidden = true;
-            setScope(scope);
+            setArea(scope, { keepView: true });
         }
 
         const stop = () => {
